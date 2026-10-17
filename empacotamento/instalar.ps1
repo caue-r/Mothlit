@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Instala o Mothlit para o usuário atual (sem administrador).
 
