@@ -17,7 +17,7 @@ __all__ = [
     "criar_lampada",
 ]
 
-_DICA_SETUP = "Rode 'python -m mothlit setup'."
+_DICA_SETUP = "Rode 'uv run python -m mothlit setup'."
 
 
 def criar_lampada(cfg: config.Config | None = None) -> Lampada:

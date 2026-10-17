@@ -22,7 +22,7 @@ def executar() -> None:
         _setup_lampada()
     if _sim("Configurar o ar-condicionado (SmartThings)?"):
         _setup_ar()
-    print("\nPronto. Teste com: python -m mothlit test-lampada  |  python -m mothlit test-ar")
+    print("\nPronto. Teste com: uv run python -m mothlit test-lampada  |  uv run python -m mothlit test-ar")
 
 
 # --- lâmpada ---

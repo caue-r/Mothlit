@@ -94,7 +94,7 @@ class SmartThingsClient:
 
         codigo = resposta.status_code
         if codigo == 401:
-            raise ErroDispositivo("Token da SmartThings inválido ou expirado. Rode 'python -m mothlit setup'.")
+            raise ErroDispositivo("Token da SmartThings inválido ou expirado. Rode 'uv run python -m mothlit setup'.")
         if codigo == 403:
             raise ErroDispositivo("O token da SmartThings não tem permissão para isso.")
         if codigo == 404:
