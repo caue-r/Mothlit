@@ -6,21 +6,23 @@ from pathlib import Path
 import customtkinter as ctk
 from PIL import Image, ImageDraw, ImageFont
 
-# Paleta (azul-marinho escuro com destaque ciano)
-FUNDO = "#0b1520"
-CARD = "#111e2b"
-CARD_BORDA = "#1b2b3b"
-BLOCO = "#14222f"
-BLOCO_HOVER = "#1a2b3b"
-BLOCO_BORDA = "#21334a"
-DESTAQUE = "#7fd4f2"
-DESTAQUE_HOVER = "#9be0f7"
-TEXTO_SOBRE_DESTAQUE = "#08202c"
-TEXTO = "#e7eef5"
-TEXTO_SUAVE = "#8da2b6"
-TEXTO_APAGADO = "#4f6274"
-ERRO = "#ff7b72"
-OK = "#5fd38d"
+# Paleta: quase preto, cinzas neutros e destaque em branco.
+# Cor de verdade só onde ela significa algo (a luz da lâmpada, o visor do ar).
+FUNDO = "#09090b"
+CARD = "#111113"
+CARD_BORDA = "#1c1c20"
+BLOCO = "#161619"
+BLOCO_HOVER = "#1e1e22"
+BLOCO_BORDA = "#222227"
+TRILHO = "#26262b"
+DESTAQUE = "#f4f4f5"
+DESTAQUE_HOVER = "#ffffff"
+TEXTO_SOBRE_DESTAQUE = "#09090b"
+TEXTO = "#f4f4f5"
+TEXTO_SUAVE = "#8b8b94"
+TEXTO_APAGADO = "#45454d"
+ERRO = "#f87171"
+VISOR = "#38bdf8"  # LEDs do ar-condicionado
 
 _PASTA_FONTES = Path(r"C:\Windows\Fonts")
 # Segoe Fluent Icons (Windows 11) ou Segoe MDL2 Assets (Windows 10): mesmos códigos.

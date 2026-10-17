@@ -1,6 +1,5 @@
 """Componentes visuais reutilizáveis."""
 
-import colorsys
 import math
 from typing import Callable
 
@@ -144,89 +143,66 @@ class Bloco(ctk.CTkFrame):
             self.configure(fg_color=tema.BLOCO_HOVER if dentro else tema.BLOCO)
 
 
-class RodaCores(ctk.CTkCanvas):
-    """Anel de matiz + quadrado de saturação/brilho. Chama `ao_soltar(h, s, v)` ao terminar o arraste."""
+class DiscoCores(ctk.CTkCanvas):
+    """Disco de cores: ângulo = matiz, distância do centro = saturação.
 
-    def __init__(self, master, ao_soltar: Callable[[float, float, float], None], diametro: int = 220,
-                 espessura: int = 22, fundo: str = tema.FUNDO):
+    O brilho fica num slider separado. Chama `ao_soltar(h, s)` ao terminar o arraste.
+    """
+
+    def __init__(self, master, ao_soltar: Callable[[float, float], None], diametro: int = 200,
+                 fundo: str = tema.FUNDO):
         # Canvas não acompanha a escala do Windows sozinho; os outros widgets sim.
         escala = ctk.ScalingTracker.get_widget_scaling(master)
-        diametro, espessura = int(diametro * escala), int(espessura * escala)
-        super().__init__(master, width=diametro, height=diametro, bg=fundo, highlightthickness=0)
+        self._d = int(diametro * escala)
+        self._m = int(10 * escala)  # margem para o marcador não ser cortado na borda
+        lado = self._d + 2 * self._m
+        super().__init__(master, width=lado, height=lado, bg=fundo, highlightthickness=0)
         self._ao_soltar = ao_soltar
-        self._d = diametro
-        self._esp = espessura
-        self._lado = int((diametro / 2 - espessura - 10) * math.sqrt(2))
-        self._q0 = (diametro - self._lado) / 2
-        self.h, self.s, self.v = 0.0, 1.0, 1.0
-        self._arrastando: str | None = None
+        self.h, self.s = 0.0, 0.0
+        self._arrastando = False
         self._ativo = True
 
-        self._img_anel = ImageTk.PhotoImage(desenhos.anel_matiz(diametro, espessura, fundo))
-        self.create_image(0, 0, image=self._img_anel, anchor="nw")
-        self._img_quadrado = None
-        self._id_quadrado = self.create_image(self._q0, self._q0, anchor="nw")
-        self._marca_anel = self.create_oval(0, 0, 0, 0, outline="white", width=3)
-        self._marca_quadrado = self.create_oval(0, 0, 0, 0, outline="white", width=3)
-        self._desenhar_quadrado()
-        self._posicionar_marcas()
+        self._img = ImageTk.PhotoImage(desenhos.disco_cores(self._d, fundo))
+        self.create_image(self._m, self._m, image=self._img, anchor="nw")
+        self._sombra = self.create_oval(0, 0, 0, 0, outline="#09090b", width=4)
+        self._marca = self.create_oval(0, 0, 0, 0, outline="white", width=2)
+        self._posicionar()
 
         self.bind("<ButtonPress-1>", self._pressionar)
         self.bind("<B1-Motion>", self._mover)
         self.bind("<ButtonRelease-1>", self._soltar)
 
-    def definir(self, h: float, s: float, v: float) -> None:
-        if self._arrastando:
-            return
-        mudou_matiz = abs(h - self.h) > 1e-3
-        self.h, self.s, self.v = h, s, v
-        if mudou_matiz:
-            self._desenhar_quadrado()
-        self._posicionar_marcas()
+    def definir(self, h: float, s: float) -> None:
+        if not self._arrastando:
+            self.h, self.s = h, s
+            self._posicionar()
 
     def habilitar(self, ativo: bool) -> None:
         self._ativo = ativo
 
-    def _desenhar_quadrado(self) -> None:
-        self._img_quadrado = ImageTk.PhotoImage(desenhos.quadrado_sv(self._lado, self.h))
-        self.itemconfigure(self._id_quadrado, image=self._img_quadrado)
-
-    def _posicionar_marcas(self) -> None:
-        c = self._d / 2
-        r = c - self._esp / 2
-        ang = self.h * math.tau
-        x, y = c + math.sin(ang) * r, c - math.cos(ang) * r
-        self.coords(self._marca_anel, x - 8, y - 8, x + 8, y + 8)
-        qx = self._q0 + self.s * self._lado
-        qy = self._q0 + (1 - self.v) * self._lado
-        self.coords(self._marca_quadrado, qx - 7, qy - 7, qx + 7, qy + 7)
+    def _posicionar(self) -> None:
+        c = self._m + self._d / 2
+        r = self.s * self._d / 2
+        x, y = c + math.sin(self.h * math.tau) * r, c - math.cos(self.h * math.tau) * r
+        self.coords(self._sombra, x - 9, y - 9, x + 9, y + 9)
+        self.coords(self._marca, x - 8, y - 8, x + 8, y + 8)
 
     def _pressionar(self, e) -> None:
-        if not self._ativo:
-            return
-        c = self._d / 2
-        r = math.hypot(e.x - c, e.y - c)
-        if c - self._esp - 4 <= r <= c + 2:
-            self._arrastando = "anel"
-        elif self._q0 <= e.x <= self._q0 + self._lado and self._q0 <= e.y <= self._q0 + self._lado:
-            self._arrastando = "quadrado"
-        self._mover(e)
+        c = self._m + self._d / 2
+        if self._ativo and math.hypot(e.x - c, e.y - c) <= self._d / 2 + self._m:
+            self._arrastando = True
+            self._mover(e)
 
     def _mover(self, e) -> None:
-        if self._arrastando == "anel":
-            c = self._d / 2
-            self.h = (math.atan2(e.x - c, -(e.y - c)) / math.tau) % 1.0
-            self._desenhar_quadrado()
-        elif self._arrastando == "quadrado":
-            self.s = min(1.0, max(0.0, (e.x - self._q0) / self._lado))
-            self.v = min(1.0, max(0.0, 1 - (e.y - self._q0) / self._lado))
-        self._posicionar_marcas()
+        if not self._arrastando:
+            return
+        c = self._m + self._d / 2
+        dx, dy = e.x - c, e.y - c
+        self.h = (math.atan2(dx, -dy) / math.tau) % 1.0
+        self.s = min(1.0, math.hypot(dx, dy) / (self._d / 2))
+        self._posicionar()
 
     def _soltar(self, _e) -> None:
         if self._arrastando:
-            self._arrastando = None
-            self._ao_soltar(self.h, self.s, self.v)
-
-    @property
-    def rgb(self) -> tuple[int, int, int]:
-        return tuple(int(c * 255) for c in colorsys.hsv_to_rgb(self.h, self.s, self.v))
+            self._arrastando = False
+            self._ao_soltar(self.h, self.s)

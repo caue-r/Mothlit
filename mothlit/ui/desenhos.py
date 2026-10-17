@@ -43,7 +43,7 @@ def ar_condicionado(ligado: bool, temperatura: str, quadro: int = 0) -> Image.Im
     dc = ImageDraw.Draw(corpo)
     for y in range(y1 - y0):
         t = y / (y1 - y0)
-        cor = tuple(int(255 - (255 - c) * t) for c in (214, 222, 230))
+        cor = tuple(int(255 - (255 - c) * t) for c in (210, 210, 215))
         dc.line((0, y, x1 - x0, y), fill=(*cor, 255))
     mascara = Image.new("L", corpo.size, 0)
     ImageDraw.Draw(mascara).rounded_rectangle((0, 0, *corpo.size), 18 * s, fill=255)
@@ -51,15 +51,15 @@ def ar_condicionado(ligado: bool, temperatura: str, quadro: int = 0) -> Image.Im
 
     d = ImageDraw.Draw(img)
     # saída de ar
-    d.rounded_rectangle((x0 + 14 * s, y1 - 18 * s, x1 - 14 * s, y1 - 9 * s), 4 * s, fill=(28, 36, 46, 255))
-    d.rounded_rectangle((x0 + 18 * s, y1 - 16 * s, x1 - 18 * s, y1 - 13 * s), 2 * s, fill=(70, 82, 96, 255))
+    d.rounded_rectangle((x0 + 14 * s, y1 - 18 * s, x1 - 14 * s, y1 - 9 * s), 4 * s, fill=(24, 24, 27, 255))
+    d.rounded_rectangle((x0 + 18 * s, y1 - 16 * s, x1 - 18 * s, y1 - 13 * s), 2 * s, fill=(70, 70, 76, 255))
     # LED de status
-    cor_led = _rgb(tema.DESTAQUE) if ligado else (150, 160, 170)
+    cor_led = _rgb(tema.VISOR) if ligado else (160, 160, 166)
     d.ellipse((x0 + 22 * s, y0 + 22 * s, x0 + 26 * s, y0 + 26 * s), fill=(*cor_led, 255))
     # visor
     if ligado and temperatura:
         f = ImageFont.truetype("seguisb.ttf", 15 * s) if _tem_fonte("seguisb.ttf") else None
-        d.text((x1 - 28 * s, y0 + 28 * s), temperatura, font=f, fill=(*_rgb(tema.DESTAQUE), 255), anchor="rm")
+        d.text((x1 - 28 * s, y0 + 28 * s), temperatura, font=f, fill=(*_rgb(tema.VISOR), 255), anchor="rm")
 
     if ligado:
         img.alpha_composite(_vento(w, h, x0, x1, y1, quadro))
@@ -90,7 +90,7 @@ def _vento(w, h, x0, x1, y1, quadro):
             u = pontos[k][2]
             onda = 0.5 + 0.5 * math.sin((u - fase) * math.tau * 1.5 + i * 0.7)
             alfa = int(160 * (1 - u) * onda)
-            d.line((pontos[k][:2], pontos[k + 1][:2]), fill=(200, 225, 240, alfa), width=max(1, s))
+            d.line((pontos[k][:2], pontos[k + 1][:2]), fill=(225, 225, 232, alfa), width=max(1, s))
     return camada.filter(ImageFilter.GaussianBlur(0.6 * s))
 
 
@@ -103,22 +103,22 @@ QUARTO_LARGURA, QUARTO_ALTURA = 360, 200
 def _quarto_base() -> Image.Image:
     s = ESCALA
     w, h = QUARTO_LARGURA * s, QUARTO_ALTURA * s
-    img = Image.new("RGB", (w, h), (34, 44, 54))
+    img = Image.new("RGB", (w, h), (24, 24, 27))
     d = ImageDraw.Draw(img)
     # parede do fundo (retângulo central) e superfícies em perspectiva
     fx0, fy0, fx1, fy1 = 95 * s, 60 * s, 265 * s, 160 * s
-    d.polygon([(0, 0), (w, 0), (fx1, fy0), (fx0, fy0)], fill=(52, 63, 74))  # teto
-    d.polygon([(0, 0), (fx0, fy0), (fx0, fy1), (0, h)], fill=(40, 50, 61))  # parede esquerda
-    d.polygon([(w, 0), (fx1, fy0), (fx1, fy1), (w, h)], fill=(44, 55, 66))  # parede direita
-    d.polygon([(0, h), (fx0, fy1), (fx1, fy1), (w, h)], fill=(30, 38, 47))  # chão
-    d.rectangle((fx0, fy0, fx1, fy1), fill=(58, 70, 82))  # fundo
+    d.polygon([(0, 0), (w, 0), (fx1, fy0), (fx0, fy0)], fill=(38, 38, 42))  # teto
+    d.polygon([(0, 0), (fx0, fy0), (fx0, fy1), (0, h)], fill=(28, 28, 32))  # parede esquerda
+    d.polygon([(w, 0), (fx1, fy0), (fx1, fy1), (w, h)], fill=(32, 32, 36))  # parede direita
+    d.polygon([(0, h), (fx0, fy1), (fx1, fy1), (w, h)], fill=(18, 18, 21))  # chão
+    d.rectangle((fx0, fy0, fx1, fy1), fill=(42, 42, 47))  # fundo
     # janela com persiana na parede direita
     for k in range(9):
         y = 70 * s + k * 9 * s
-        d.line(((300 * s, y + 6 * s), (340 * s, y - 2 * s)), fill=(75, 88, 100), width=3 * s)
+        d.line(((300 * s, y + 6 * s), (340 * s, y - 2 * s)), fill=(58, 58, 64), width=3 * s)
     # cama simples
-    d.polygon([(120 * s, 150 * s), (240 * s, 150 * s), (262 * s, 178 * s), (98 * s, 178 * s)], fill=(62, 74, 88))
-    d.rectangle((98 * s, 178 * s, 262 * s, 186 * s), fill=(48, 58, 70))
+    d.polygon([(120 * s, 150 * s), (240 * s, 150 * s), (262 * s, 178 * s), (98 * s, 178 * s)], fill=(50, 50, 56))
+    d.rectangle((98 * s, 178 * s, 262 * s, 186 * s), fill=(38, 38, 43))
     return img
 
 
@@ -134,8 +134,8 @@ def quarto(ligada: bool, cor: tuple[int, int, int], intensidade: float) -> Image
     base = _quarto_base().copy()
     if not ligada:
         d = ImageDraw.Draw(base)
-        _painel_teto(d, s, (88, 98, 108))
-        base = Image.blend(base, Image.new("RGB", base.size, (14, 20, 28)), 0.35)
+        _painel_teto(d, s, (70, 70, 76))
+        base = Image.blend(base, Image.new("RGB", base.size, (9, 9, 11)), 0.35)
     else:
         w, h = base.size
         intensidade = max(0.15, min(1.0, intensidade))
@@ -166,42 +166,29 @@ def cor_do_branco(temperatura: int) -> tuple[int, int, int]:
     return tuple(int(q + (f - q) * t) for q, f in zip(quente, frio))
 
 
-# --- roda de cores -----------------------------------------------------------
+# --- disco de cores ----------------------------------------------------------
 
 
 @lru_cache(maxsize=4)
-def anel_matiz(diametro: int, espessura: int, fundo: str) -> Image.Image:
+def disco_cores(diametro: int, fundo: str) -> Image.Image:
+    """Matiz pelo ângulo (0° no topo, sentido horário) e saturação pela distância ao centro."""
     s = ESCALA
     D = diametro * s
     img = Image.new("RGB", (D, D), _rgb(fundo))
     px = img.load()
     c = D / 2
-    r_ext, r_int = c, c - espessura * s
     for y in range(D):
         for x in range(D):
             dx, dy = x - c + 0.5, y - c + 0.5
-            r = math.hypot(dx, dy)
-            if r_int <= r <= r_ext:
-                h = (math.degrees(math.atan2(dx, -dy)) % 360) / 360  # 0° no topo, sentido horário
-                px[x, y] = tuple(int(v * 255) for v in colorsys.hsv_to_rgb(h, 1, 1))
+            r = math.hypot(dx, dy) / c
+            if r <= 1:
+                h = (math.degrees(math.atan2(dx, -dy)) % 360) / 360
+                px[x, y] = tuple(int(v * 255) for v in colorsys.hsv_to_rgb(h, r, 1))
     mascara = Image.new("L", (D, D), 0)
-    md = ImageDraw.Draw(mascara)
-    md.ellipse((0, 0, D - 1, D - 1), fill=255)
-    md.ellipse((espessura * s, espessura * s, D - espessura * s - 1, D - espessura * s - 1), fill=0)
+    ImageDraw.Draw(mascara).ellipse((0, 0, D - 1, D - 1), fill=255)
     final = Image.new("RGB", (D, D), _rgb(fundo))
     final.paste(img, (0, 0), mascara)
     return final.resize((diametro, diametro), Image.LANCZOS)
-
-
-def quadrado_sv(lado: int, matiz: float) -> Image.Image:
-    """Saturação no eixo x (branco → cor) e brilho no eixo y (cima claro → baixo escuro)."""
-    cor = tuple(int(v * 255) for v in colorsys.hsv_to_rgb(matiz, 1, 1))
-    img = Image.new("RGB", (lado, lado), cor)
-    horizontal = Image.linear_gradient("L").rotate(-90).resize((lado, lado))  # esquerda 255 → direita 0
-    img = Image.composite(Image.new("RGB", (lado, lado), (255, 255, 255)), img, horizontal)
-    vertical = Image.linear_gradient("L").resize((lado, lado))  # topo 0 → base 255
-    return Image.composite(Image.new("RGB", (lado, lado), (0, 0, 0)), img, vertical)
-
 
 def _tem_fonte(nome: str) -> bool:
     try:

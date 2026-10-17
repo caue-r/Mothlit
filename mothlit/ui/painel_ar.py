@@ -77,8 +77,8 @@ class PainelAr(PainelBase):
                                      tamanho_icone=12)
         self.botao_mais.pack(side="right")
         self.slider = ctk.CTkSlider(controle, from_=16, to=30, number_of_steps=14, height=18,
-                                    progress_color=tema.DESTAQUE, button_color=tema.TEXTO,
-                                    button_hover_color="#ffffff", fg_color=tema.BLOCO_BORDA,
+                                    progress_color=tema.DESTAQUE, button_color=tema.DESTAQUE,
+                                    button_hover_color=tema.DESTAQUE_HOVER, fg_color=tema.TRILHO,
                                     command=self._slider_movido)
         self.slider.pack(side="left", fill="x", expand=True, padx=10)
         limites = ctk.CTkFrame(self.card, fg_color="transparent")

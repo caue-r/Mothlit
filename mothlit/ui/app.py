@@ -9,7 +9,7 @@ import customtkinter as ctk
 from .. import config
 from ..config import ErroConfiguracao
 from ..devices import criar_ar, criar_lampada
-from . import tema
+from . import marca, tema
 from .painel_ar import PainelAr
 from .painel_lampada import PainelLampada
 from .widgets import Abas, BotaoIcone
@@ -24,6 +24,10 @@ class App(ctk.CTk):
         self.title("Mothlit")
         self.geometry(f"{LARGURA}x{ALTURA}")
         self.resizable(False, False)
+        try:
+            self.iconbitmap(str(marca.arquivo_ico()))
+        except Exception:  # ícone é cosmético; nunca impede a janela de abrir
+            pass
         self.worker = Worker(self)
         self._erro_visivel_ate = 0.0
 
@@ -55,11 +59,10 @@ class App(ctk.CTk):
     def _barra_titulo(self) -> None:
         barra = ctk.CTkFrame(self, fg_color="transparent", height=56)
         barra.pack(fill="x", padx=20, pady=(14, 8))
-        logo = ctk.CTkLabel(barra, text="", width=34, height=34, corner_radius=10, fg_color="#2f7fe0",
-                            image=tema.icone(tema.ICONE_CASA, 16, "#ffffff"))
+        logo = ctk.CTkLabel(barra, text="", image=marca.ctk_imagem(30))
         logo.pack(side="left")
         titulo = ctk.CTkLabel(barra, text="Mothlit", font=tema.fonte(17), text_color=tema.TEXTO)
-        titulo.pack(side="left", padx=12)
+        titulo.pack(side="left", padx=10)
         BotaoIcone(barra, tema.ICONE_FECHAR, self.fechar, tamanho=34, tamanho_icone=12).pack(side="right")
         BotaoIcone(barra, tema.ICONE_MINIMIZAR, self.minimizar, tamanho=34, tamanho_icone=12).pack(
             side="right", padx=8)
@@ -91,6 +94,11 @@ class App(ctk.CTk):
             preferencia = ctypes.c_int(DWMWCP_ROUND)
             ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
                                                        ctypes.byref(preferencia), ctypes.sizeof(preferencia))
+            # borda fina e discreta (COLORREF = 0x00BBGGRR)
+            DWMWA_BORDER_COLOR = 34
+            borda = ctypes.c_int(0x00272422)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ctypes.byref(borda),
+                                                       ctypes.sizeof(borda))
             self._hwnd = hwnd
         except (AttributeError, OSError):
             self._hwnd = None
