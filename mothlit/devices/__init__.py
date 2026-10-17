@@ -25,7 +25,9 @@ def criar_lampada(cfg: config.Config | None = None) -> Lampada:
     chave = config.ler_segredo(config.SEGREDO_LAMPADA_KEY)
     if not (cfg.lampada_id and cfg.lampada_ip and chave):
         raise config.ErroConfiguracao(f"Lâmpada não configurada. {_DICA_SETUP}")
-    return Lampada(cfg.lampada_id, cfg.lampada_ip, chave, cfg.lampada_versao)
+    lampada = Lampada(cfg.lampada_id, cfg.lampada_ip, chave, cfg.lampada_versao)
+    lampada.nome = cfg.lampada_nome
+    return lampada
 
 
 def criar_ar(cfg: config.Config | None = None) -> ArCondicionado:

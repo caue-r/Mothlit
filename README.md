@@ -73,6 +73,7 @@ Pontos importantes:
 ## Uso
 
 ```powershell
+uv run python -m mothlit                # abre a interface
 uv run python -m mothlit test-lampada   # liga, muda brilho/temperatura/cor e restaura o estado inicial
 uv run python -m mothlit test-ar        # mostra capabilities e estado; comandos só se você confirmar
 ```
@@ -89,7 +90,16 @@ mothlit/
     lampada.py           tinytuya.BulbDevice (detecta tipo e recursos pelos DPS)
     smartthings.py       cliente httpx + autenticação (AuthPAT)
     ar_condicionado.py   capabilities switch, thermostatCoolingSetpoint,
-                         airConditionerMode, airConditionerFanMode, temperatureMeasurement
+                         airConditionerMode, airConditionerFanMode, temperatureMeasurement,
+                         fanOscillationMode, custom.airConditionerOptionalMode
+  ui/
+    app.py               janela sem borda (barra de título própria), abas Clima/Luz
+    painel_ar.py         ilustração animada, alvo −/+, blocos de modo/ventilação/dormir/oscilação
+    painel_lampada.py    quarto iluminado na cor atual, roda de cores, ajustes de branco
+    widgets.py           botão redondo, abas em pílula, bloco com menu, roda de cores
+    desenhos.py          ilustrações geradas com Pillow
+    tema.py              cores, fontes e ícones (Segoe Fluent Icons do Windows)
+    worker.py            rede em threads, resultado entregue à UI via after()
 tests/                   pytest com mocks (tinytuya mockado, httpx.MockTransport)
 ```
 

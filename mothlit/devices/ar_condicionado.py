@@ -11,6 +11,8 @@ CAP_SETPOINT = "thermostatCoolingSetpoint"
 CAP_MODO = "airConditionerMode"
 CAP_VENTILADOR = "airConditionerFanMode"
 CAP_TEMPERATURA = "temperatureMeasurement"
+CAP_OSCILACAO = "fanOscillationMode"
+CAP_OPCIONAL = "custom.airConditionerOptionalMode"  # Samsung: sleep, quiet, windFree...
 
 FAIXA_PADRAO = (16.0, 30.0, 1.0)
 
@@ -26,6 +28,11 @@ class EstadoAr:
     ventilador: str | None = None
     ventiladores: list[str] = field(default_factory=list)
     capabilities: set[str] = field(default_factory=set)
+    oscilacao: str | None = None
+    oscilacoes: list[str] = field(default_factory=list)
+    modo_opcional: str | None = None
+    modos_opcionais: list[str] = field(default_factory=list)
+    rotulo: str = ""
 
 
 class ArCondicionado:
@@ -36,6 +43,7 @@ class ArCondicionado:
         self._id = device_id
         self._componente = componente
         self._capabilities: set[str] | None = None
+        self.rotulo = ""
         self._faixa = FAIXA_PADRAO
         self._lock = threading.Lock()
 
@@ -43,6 +51,7 @@ class ArCondicionado:
         """Capabilities declaradas pelo aparelho (lidas uma vez via GET /devices/{id})."""
         if self._capabilities is None:
             dados = self._cliente.dispositivo(self._id)
+            self.rotulo = dados.get("label") or dados.get("name") or ""
             for comp in dados.get("components", []):
                 if comp.get("id") == self._componente:
                     self._capabilities = {c["id"] for c in comp.get("capabilities", [])}
@@ -71,6 +80,12 @@ class ArCondicionado:
 
     def definir_ventilador(self, velocidade: str) -> None:
         self._executar(CAP_VENTILADOR, "setFanMode", [velocidade])
+
+    def definir_oscilacao(self, modo: str) -> None:
+        self._executar(CAP_OSCILACAO, "setFanOscillationMode", [modo])
+
+    def definir_modo_opcional(self, modo: str) -> None:
+        self._executar(CAP_OPCIONAL, "setAcOptionalMode", [modo])
 
     # --- leitura ---
 
@@ -106,6 +121,17 @@ class ArCondicionado:
             ventilador=valor(CAP_VENTILADOR, "fanMode"),
             ventiladores=list(ventiladores),
             capabilities=caps,
+            oscilacao=valor(CAP_OSCILACAO, "fanOscillationMode"),
+            oscilacoes=list(
+                valor(CAP_OSCILACAO, "availableFanOscillationModes")
+                or valor(CAP_OSCILACAO, "supportedFanOscillationModes")
+                or []
+            ),
+            modo_opcional=valor(CAP_OPCIONAL, "acOptionalMode"),
+            modos_opcionais=list(
+                valor(CAP_OPCIONAL, "availableAcOptionalMode") or valor(CAP_OPCIONAL, "supportedAcOptionalMode") or []
+            ),
+            rotulo=self.rotulo,
         )
 
     # --- internos ---

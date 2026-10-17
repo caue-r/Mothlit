@@ -5,32 +5,13 @@ from typing import Callable
 
 import customtkinter as ctk
 
+from . import tema
+from .widgets import BotaoIcone
 from .worker import Worker
-
-COR_OK = "#3ecf6e"
-COR_ERRO = "#e5534b"
-COR_NEUTRA = "#8b949e"
 
 # Depois que o usuário mexe num controle, ignoramos atualizações de estado por
 # alguns segundos para o controle não "pular de volta" antes do aparelho reagir.
 JANELA_INTERACAO_S = 4.0
-
-
-class Indicador(ctk.CTkLabel):
-    """Bolinha colorida + texto de conexão."""
-
-    def __init__(self, master):
-        super().__init__(master, text="", anchor="e")
-        self.definir("carregando")
-
-    def definir(self, situacao: str) -> None:
-        texto, cor = {
-            "conectado": ("● Conectado", COR_OK),
-            "erro": ("● Sem conexão", COR_ERRO),
-            "carregando": ("● Conectando…", COR_NEUTRA),
-            "nao_configurado": ("● Não configurado", COR_NEUTRA),
-        }[situacao]
-        self.configure(text=texto, text_color=cor)
 
 
 class Atrasador:
@@ -53,28 +34,41 @@ class Atrasador:
 
 
 class PainelBase(ctk.CTkFrame):
-    """Moldura com título, indicador e a lógica comum de leitura/comando."""
+    """Card do aparelho (nome, situação, botão de energia) + lógica comum de leitura/comando."""
 
-    def __init__(self, master, titulo: str, worker: Worker, mostrar_status: Callable[..., None]):
-        super().__init__(master, corner_radius=12)
+    def __init__(self, master, nome: str, worker: Worker, mostrar_status: Callable[..., None]):
+        super().__init__(master, fg_color="transparent")
         self.worker = worker
         self.mostrar_status = mostrar_status
         self.dispositivo = None
+        self.online = False
         self._ultima_interacao = 0.0
 
-        topo = ctk.CTkFrame(self, fg_color="transparent")
-        topo.pack(fill="x", padx=16, pady=(14, 6))
-        ctk.CTkLabel(topo, text=titulo, font=ctk.CTkFont(size=18, weight="bold")).pack(side="left")
-        self.indicador = Indicador(topo)
-        self.indicador.pack(side="right")
+        self.card = ctk.CTkFrame(self, fg_color=tema.CARD, corner_radius=18, border_width=1,
+                                 border_color=tema.CARD_BORDA)
+        self.card.pack(fill="x")
 
-        self.corpo = ctk.CTkFrame(self, fg_color="transparent")
-        self.corpo.pack(fill="both", expand=True, padx=16, pady=(0, 14))
+        cabecalho = ctk.CTkFrame(self.card, fg_color="transparent")
+        cabecalho.pack(fill="x", padx=18, pady=(16, 4))
+        textos = ctk.CTkFrame(cabecalho, fg_color="transparent")
+        textos.pack(side="left", fill="x", expand=True)
+        self.rotulo_nome = ctk.CTkLabel(textos, text=nome, font=tema.fonte(15, "bold"), text_color=tema.TEXTO,
+                                        anchor="w", height=20)
+        self.rotulo_nome.pack(fill="x")
+        self.rotulo_situacao = ctk.CTkLabel(textos, text="Conectando…", font=tema.fonte(12),
+                                            text_color=tema.TEXTO_SUAVE, anchor="w", height=16)
+        self.rotulo_situacao.pack(fill="x")
+        self.botao_energia = BotaoIcone(cabecalho, tema.ICONE_ENERGIA, self._energia, tamanho=44, tamanho_icone=18)
+        self.botao_energia.pack(side="right")
+
+    # --- ciclo de vida ---
 
     def definir_dispositivo(self, dispositivo, erro: str | None = None) -> None:
         self.dispositivo = dispositivo
-        if dispositivo is None:
-            self.indicador.definir("nao_configurado")
+        if dispositivo is not None:
+            self.rotulo_nome.configure(text=dispositivo.nome)
+        else:
+            self.definir_situacao("Não configurado", tema.TEXTO_SUAVE)
             self.habilitar(False)
             if erro:
                 self.mostrar_status(erro, erro=True)
@@ -95,7 +89,6 @@ class PainelBase(ctk.CTkFrame):
             # Comando confirmado: se o usuário não mexeu de novo, a releitura pode ser aplicada.
             if self._ultima_interacao == marca:
                 self._ultima_interacao = 0.0
-            self.indicador.definir("conectado")
             self.mostrar_status(descricao)
             self.after(reler_apos_ms, self.atualizar)
 
@@ -104,17 +97,26 @@ class PainelBase(ctk.CTkFrame):
     def registrar_interacao(self) -> None:
         self._ultima_interacao = time.monotonic()
 
+    def definir_situacao(self, texto: str, cor: str = tema.TEXTO_SUAVE) -> None:
+        self.rotulo_situacao.configure(text=texto, text_color=cor)
+
     def _estado_recebido(self, estado) -> None:
-        self.indicador.definir("conectado")
+        self.online = True
         self.habilitar(True)
+        self.mostrar_status(f"Atualizado às {time.strftime('%H:%M')}", sutil=True)
         if time.monotonic() - self._ultima_interacao >= JANELA_INTERACAO_S:
             self.aplicar_estado(estado)
 
     def _falhou(self, mensagem: str) -> None:
-        self.indicador.definir("erro")
+        self.online = False
+        self.definir_situacao("● Sem conexão", tema.ERRO)
         self.mostrar_status(mensagem, erro=True)
 
-    # implementados pelos painéis
+    # --- implementados pelos painéis ---
+
+    def _energia(self) -> None:
+        raise NotImplementedError
+
     def aplicar_estado(self, estado) -> None:
         raise NotImplementedError
 

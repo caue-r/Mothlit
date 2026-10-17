@@ -42,9 +42,10 @@ def _setup_lampada() -> None:
     if dados is None:
         dados = _lampada_manual()
 
-    device_id, local_key, ip, versao = dados
+    device_id, local_key, ip, versao, nome = dados
     config.salvar_segredo(config.SEGREDO_LAMPADA_KEY, local_key)
-    config.salvar_env({"LAMPADA_ID": device_id, "LAMPADA_IP": ip, "LAMPADA_VERSAO": str(versao)})
+    config.salvar_env({"LAMPADA_ID": device_id, "LAMPADA_IP": ip, "LAMPADA_VERSAO": str(versao),
+                       "LAMPADA_NOME": nome or "Lâmpada"})
     print(f"Lâmpada salva: {device_id} em {ip} (protocolo {versao}).")
     print("Dica: reserve esse IP no roteador (DHCP estático) para ele não mudar.")
 
@@ -71,7 +72,7 @@ def _lampada_automatico():
     local = achados.get(escolhido["id"], {})
     ip = local.get("ip") or input("Não achei na rede. IP da lâmpada: ").strip()
     versao = local.get("version") or input("Versão do protocolo (ex.: 3.3, 3.5): ").strip()
-    return escolhido["id"], escolhido["key"], ip, float(versao)
+    return escolhido["id"], escolhido["key"], ip, float(versao), escolhido.get("name") or ""
 
 
 def _lampada_manual():
@@ -79,7 +80,8 @@ def _lampada_manual():
     local_key = getpass("local_key (não aparece): ").strip()
     ip = input("IP: ").strip()
     versao = float(input("Versão do protocolo (ex.: 3.3, 3.5): ").strip())
-    return device_id, local_key, ip, versao
+    nome = input("Nome para exibir (Lâmpada): ").strip()
+    return device_id, local_key, ip, versao, nome
 
 
 # --- ar-condicionado ---

@@ -6,6 +6,7 @@ from mothlit.devices import ArCondicionado, ErroDispositivo
 
 # Resumo do GET /devices/{id} e /status reais do Samsung (componente main)
 DISPOSITIVO = {
+    "label": "Ar condicionado Quarto",
     "components": [
         {
             "id": "main",
@@ -19,6 +20,8 @@ DISPOSITIVO = {
                     "thermostatCoolingSetpoint",
                     "dustSensor",
                     "custom.disabledCapabilities",
+                    "fanOscillationMode",
+                    "custom.airConditionerOptionalMode",
                 )
             ],
         }
@@ -45,6 +48,16 @@ STATUS = {
                 "coolingSetpoint": {"value": 26, "unit": "C"},
             },
             "custom.disabledCapabilities": {"disabledCapabilities": {"value": ["dustSensor"]}},
+            "fanOscillationMode": {
+                "supportedFanOscillationModes": {"value": ["fixed", "vertical", "horizontal", "all"]},
+                "availableFanOscillationModes": {"value": None},
+                "fanOscillationMode": {"value": "fixed"},
+            },
+            "custom.airConditionerOptionalMode": {
+                "supportedAcOptionalMode": {"value": ["off", "sleep", "quiet", "windFree"]},
+                "availableAcOptionalMode": {"value": None},
+                "acOptionalMode": {"value": "off"},
+            },
         }
     }
 }
@@ -68,6 +81,26 @@ def test_estado_le_atributos_reais():
     assert e.modos == ["auto", "cool", "dry", "wind"]
     assert e.ventiladores == ["auto"]  # available tem prioridade sobre supported
     assert "dustSensor" not in e.capabilities  # desativada pelo aparelho
+
+
+def test_estado_extras_samsung():
+    ar, _ = ar_falso()
+    e = ar.estado()
+    assert e.rotulo == "Ar condicionado Quarto"
+    assert e.oscilacao == "fixed"
+    assert e.oscilacoes == ["fixed", "vertical", "horizontal", "all"]
+    assert e.modo_opcional == "off"
+    assert "sleep" in e.modos_opcionais
+
+
+def test_comandos_extras_usam_nomes_da_api():
+    ar, cliente = ar_falso()
+    ar.definir_oscilacao("vertical")
+    ar.definir_modo_opcional("sleep")
+    cliente.executar.assert_any_call("dev1", "fanOscillationMode", "setFanOscillationMode", ["vertical"], "main")
+    cliente.executar.assert_any_call(
+        "dev1", "custom.airConditionerOptionalMode", "setAcOptionalMode", ["sleep"], "main"
+    )
 
 
 def test_usa_supported_quando_nao_ha_available():

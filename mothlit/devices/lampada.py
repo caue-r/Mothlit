@@ -25,6 +25,7 @@ class EstadoLampada:
     cor_rgb: tuple[int, int, int] | None
     suporta_temperatura: bool
     suporta_cor: bool
+    cor_hsv: tuple[float, float, float] | None = None  # cada componente de 0 a 1
 
 
 class Lampada:
@@ -70,6 +71,11 @@ class Lampada:
     def definir_cor(self, r: int, g: int, b: int) -> None:
         self._executar(self._bulb.set_colour, *(_limitar(c, 0, 255) for c in (r, g, b)))
 
+    def definir_hsv(self, h: float, s: float, v: float) -> None:
+        """Cor por matiz/saturação/brilho, cada um de 0 a 1 (usado pela roda de cores)."""
+        h, s, v = (max(0.0, min(1.0, float(x))) for x in (h, s, v))
+        self._executar(self._bulb.set_hsv, h, s, max(v, 0.01))
+
     # --- leitura ---
 
     def estado(self) -> EstadoLampada:
@@ -92,13 +98,14 @@ class Lampada:
             suporta_temp = bool(dpset.get("colourtemp"))
             suporta_cor = bool(dpset.get("colour"))
 
-            cor = None
+            cor = hsv = None
             hexcor = dp("colour")
             if suporta_cor and isinstance(hexcor, str) and hexcor:
                 try:
                     cor = tinytuya.BulbDevice.hexvalue_to_rgb(hexcor, dpset.get("value_hexformat"))
+                    hsv = tinytuya.BulbDevice.hexvalue_to_hsv(hexcor, dpset.get("value_hexformat"))
                 except (ValueError, IndexError):
-                    cor = None
+                    cor = hsv = None
 
             # No modo colorido o brilho mora no V do HSV, não no DP de brilho.
             if modo == "colour" and isinstance(hexcor, str) and hexcor:
@@ -119,6 +126,7 @@ class Lampada:
                 cor_rgb=tuple(cor) if cor else None,
                 suporta_temperatura=suporta_temp,
                 suporta_cor=suporta_cor,
+                cor_hsv=tuple(hsv) if hsv else None,
             )
 
     # --- internos ---

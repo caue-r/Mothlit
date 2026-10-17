@@ -37,6 +37,7 @@ class Config:
     lampada_ip: str
     lampada_versao: float
     ar_device_id: str
+    lampada_nome: str = "Lâmpada"
 
 
 def carregar() -> Config:
@@ -52,6 +53,7 @@ def carregar() -> Config:
         lampada_ip=os.environ.get("LAMPADA_IP", ""),
         lampada_versao=versao,
         ar_device_id=os.environ.get("SMARTTHINGS_DEVICE_ID", ""),
+        lampada_nome=os.environ.get("LAMPADA_NOME") or "Lâmpada",
     )
 
 

@@ -24,7 +24,9 @@ def bulb_falso(status=STATUS_BRANCO):
     """BulbDevice real (sem rede) com status() mockado, para testar a detecção de verdade."""
     bulb = tinytuya.BulbDevice("id", "127.0.0.1", "0123456789abcdef", version=3.5)
     bulb.status = MagicMock(return_value=status)
-    for metodo in ("turn_on", "turn_off", "set_brightness_percentage", "set_colourtemp_percentage", "set_colour"):
+    for metodo in (
+        "turn_on", "turn_off", "set_brightness_percentage", "set_colourtemp_percentage", "set_colour", "set_hsv"
+    ):
         setattr(bulb, metodo, MagicMock(return_value={"dps": {}}))
     return bulb
 
@@ -44,6 +46,8 @@ def test_estado_modo_colorido_usa_v_do_hsv_como_brilho():
     estado = Lampada("id", "ip", "key", 3.5, bulb=bulb_falso(status)).estado()
     assert estado.modo == "colour"
     assert estado.brilho == 50
+    h, s, v = estado.cor_hsv
+    assert round(h * 360) == 120 and s == 1.0 and v == 0.5
     assert estado.cor_rgb[1] > estado.cor_rgb[0]
 
 
@@ -60,6 +64,8 @@ def test_comandos_repassam_para_tinytuya():
     bulb.set_brightness_percentage.assert_called_with(1)
     bulb.set_colourtemp_percentage.assert_called_with(100)
     bulb.set_colour.assert_called_with(255, 0, 10)
+    lampada.definir_hsv(0.5, 2.0, 0)  # limita a 0..1 e evita brilho zero
+    bulb.set_hsv.assert_called_with(0.5, 1.0, 0.01)
 
 
 def test_erro_de_rede_vira_mensagem_amigavel():
