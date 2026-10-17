@@ -156,6 +156,51 @@ def test_erro_ao_gravar_registro_vira_mensagem(monkeypatch):
     assert r["ok"] is False and "acesso negado" in r["erro"]
 
 
+def _cfg():
+    from mothlit import config
+
+    return config.Config("lamp", "1.2.3.4", 3.5, "ar-1")
+
+
+def test_trocar_token_valida_antes_de_salvar(monkeypatch):
+    from mothlit import config
+    from mothlit.ui import app as mod
+
+    salvos, apagados = {}, []
+    cliente = MagicMock()
+    monkeypatch.setattr(mod, "SmartThingsClient", lambda auth: cliente)
+    monkeypatch.setattr(config, "carregar", _cfg)
+    monkeypatch.setattr(config, "salvar_segredo", lambda n, v: salvos.__setitem__(n, v))
+    monkeypatch.setattr(config, "apagar_segredo_json", apagados.append)
+    monkeypatch.setattr(mod, "criar_ar", lambda: "ar-novo")
+    monkeypatch.setattr(mod, "criar_auth_smartthings", lambda: mod.AuthPAT("novo"))
+
+    api = Api()
+    r = api.trocar_token_smartthings("  novo  ")
+    cliente.dispositivo.assert_called_once_with("ar-1")
+    assert salvos == {config.SEGREDO_SMARTTHINGS_PAT: "novo"}
+    assert apagados == [config.SEGREDO_SMARTTHINGS_OAUTH]
+    assert api._ar == "ar-novo"
+    assert r["dados"]["smartthings"] == {"tipo": "pat", "expiraEm": None}
+
+
+def test_token_recusado_nao_e_salvo(monkeypatch):
+    from mothlit import config
+    from mothlit.ui import app as mod
+
+    cliente = MagicMock()
+    cliente.dispositivo.side_effect = ErroDispositivo("Token da SmartThings expirado ou inválido.")
+    monkeypatch.setattr(mod, "SmartThingsClient", lambda auth: cliente)
+    monkeypatch.setattr(config, "carregar", _cfg)
+    salvar = MagicMock()
+    monkeypatch.setattr(config, "salvar_segredo", salvar)
+
+    r = Api().trocar_token_smartthings("ruim")
+    assert r["ok"] is False and r["erro"].startswith("Token não aceito")
+    salvar.assert_not_called()
+    assert Api().trocar_token_smartthings("   ")["ok"] is False
+
+
 def test_aparelho_nao_configurado():
     r = Api(erro_ar="Ar-condicionado não configurado.").estado_ar()
     assert r == {"ok": False, "configurado": False, "erro": "Ar-condicionado não configurado."}

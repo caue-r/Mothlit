@@ -540,19 +540,54 @@ window.aoRestaurar = () => {
   atualizarTudo();
 };
 
+function mostrarConfiguracoes(d) {
+  $("#folha-dados").innerHTML = [
+    ["Lâmpada", `${d.lampadaIp} · protocolo ${d.lampadaVersao}`],
+    ["Ar-condicionado", d.arId],
+    ["Arquivo .env", d.env],
+  ].map(([t, v]) => `<dt>${t}</dt><dd>${v}</dd>`).join("");
+
+  const st = d.smartthings || {};
+  let acesso;
+  if (st.tipo === "oauth") {
+    const validade = st.expiraEm
+      ? new Date(st.expiraEm * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+      : "–";
+    acesso = `OAuth · renova sozinho<small>Token atual válido até ${validade}; a autorização dura enquanto o Mothlit rodar ao menos a cada 30 dias.</small>`;
+  } else if (st.tipo === "pat") {
+    acesso = "Token pessoal (PAT)<small>Tokens novos expiram em 24 h. Para não precisar trocar, rode o setup com OAuth.</small>";
+  } else {
+    acesso = "Não configurado<small>Rode o setup ou cole um token pessoal abaixo.</small>";
+  }
+  $("#acesso-st").innerHTML = acesso;
+}
+
 async function abrirConfiguracoes() {
   const r = await chamar("configuracoes");
-  if (r.ok) {
-    const d = r.dados;
-    $("#folha-dados").innerHTML = [
-      ["Lâmpada", `${d.lampadaIp} · protocolo ${d.lampadaVersao}`],
-      ["Ar-condicionado", d.arId],
-      ["Arquivo .env", d.env],
-      ["Segredos", "Gerenciador de Credenciais do Windows (mothlit)"],
-    ].map(([t, v]) => `<dt>${t}</dt><dd>${v}</dd>`).join("");
-  }
+  if (r.ok) mostrarConfiguracoes(r.dados);
   await carregarPreferencias();
   $("#folha-fundo").classList.add("aberta");
+}
+
+function iniciarTrocaDeToken() {
+  $("#form-token").addEventListener("submit", async e => {
+    e.preventDefault();
+    const campo = $("#novo-token"), botao = $("#salvar-token");
+    if (!campo.value.trim()) return campo.focus();
+    botao.disabled = true;
+    botao.textContent = "Validando…";
+    const r = await chamar("trocar_token_smartthings", campo.value);
+    botao.disabled = false;
+    botao.textContent = "Salvar";
+    if (r.ok) {
+      campo.value = "";
+      mostrarConfiguracoes(r.dados);
+      status("Token da SmartThings salvo");
+      ler("ar");
+    } else {
+      status(r.erro || "Não consegui salvar o token.", "erro");
+    }
+  });
 }
 
 // ---------------------------------------------------------------- preferências
@@ -620,6 +655,7 @@ document.addEventListener("DOMContentLoaded", () => {
   iniciarAr();
   iniciarLuz();
   iniciarPreferencias();
+  iniciarTrocaDeToken();
   requestAnimationFrame(() => app.classList.add("visivel"));
   status("Conectando…", "sutil");
   atualizarTudo();

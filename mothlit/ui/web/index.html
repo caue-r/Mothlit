@@ -189,6 +189,12 @@
       </div>
       <h4 class="folha-secao">Aparelhos</h4>
       <dl id="folha-dados"></dl>
+      <h4 class="folha-secao">Acesso à SmartThings</h4>
+      <p class="acesso" id="acesso-st">–</p>
+      <form class="trocar-token" id="form-token" autocomplete="off">
+        <input type="password" id="novo-token" placeholder="Colar novo token pessoal (PAT)" spellcheck="false">
+        <button type="submit" id="salvar-token">Salvar</button>
+      </form>
       <p class="folha-dica">Para reconfigurar: <code>uv run python -m mothlit setup</code></p>
     </div>
   </div>

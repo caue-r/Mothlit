@@ -19,7 +19,17 @@ import webview
 
 from .. import config, inicializacao
 from ..config import ErroConfiguracao
-from ..devices import ArCondicionado, ErroDispositivo, EstadoAr, EstadoLampada, Lampada, criar_ar, criar_lampada
+from ..devices import (
+    ArCondicionado,
+    ErroDispositivo,
+    EstadoAr,
+    EstadoLampada,
+    Lampada,
+    criar_ar,
+    criar_auth_smartthings,
+    criar_lampada,
+)
+from ..devices.smartthings import AuthPAT, SmartThingsClient
 from . import marca
 
 WEB = Path(__file__).resolve().parent / "web"
@@ -154,12 +164,38 @@ class Api:
 
     def configuracoes(self):
         cfg = config.carregar()
+        auth = criar_auth_smartthings()
         return {"ok": True, "dados": {
             "lampadaIp": cfg.lampada_ip or "–",
             "lampadaVersao": cfg.lampada_versao,
             "arId": cfg.ar_device_id or "–",
             "env": str(config.caminho_env()),
+            "smartthings": {
+                "tipo": getattr(auth, "tipo", None),
+                "expiraEm": getattr(auth, "expira_em", None),  # só no OAuth (epoch em segundos)
+            },
         }}
+
+    def trocar_token_smartthings(self, token: str):
+        """Plano B: cola um token pessoal (PAT) novo. Valida na SmartThings antes de salvar."""
+        token = (token or "").strip()
+        if not token:
+            return {"ok": False, "erro": "Cole o token antes de salvar."}
+        cfg = config.carregar()
+        cliente = SmartThingsClient(AuthPAT(token))
+        try:
+            if cfg.ar_device_id:
+                cliente.dispositivo(cfg.ar_device_id)
+            else:
+                cliente.listar_dispositivos()
+        except ErroDispositivo as e:
+            return {"ok": False, "erro": f"Token não aceito: {e}"}
+        finally:
+            cliente.fechar()
+        config.salvar_segredo(config.SEGREDO_SMARTTHINGS_PAT, token)
+        config.apagar_segredo_json(config.SEGREDO_SMARTTHINGS_OAUTH)  # passa a usar o PAT
+        self._ar, self._erro_ar = _criar(criar_ar)
+        return self.configuracoes()
 
     def minimizar(self):
         """Vai para a bandeja: some da tela e da barra de tarefas."""

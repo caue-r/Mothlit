@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import keyring
+import keyring.errors
 from dotenv import load_dotenv
 
 SERVICO_KEYRING = "mothlit"
@@ -99,6 +100,51 @@ def salvar_preferencia(nome: str, valor) -> dict:
     caminho.parent.mkdir(parents=True, exist_ok=True)
     caminho.write_text(json.dumps(preferencias, indent=2), encoding="utf-8")
     return preferencias
+
+
+SEGREDO_SMARTTHINGS_OAUTH = "smartthings_oauth"
+
+# O Gerenciador de Credenciais do Windows aceita até 2560 bytes por segredo (UTF-16: ~1280
+# caracteres). Valores maiores (tokens OAuth podem ser longos) são gravados em pedaços.
+_PEDACO = 1000
+
+
+def salvar_segredo_json(nome: str, dados: dict) -> None:
+    texto = json.dumps(dados, separators=(",", ":"))
+    pedacos = [texto[i : i + _PEDACO] for i in range(0, len(texto), _PEDACO)] or [""]
+    antigos = int(ler_segredo(f"{nome}#n") or 0)
+    for i, pedaco in enumerate(pedacos):
+        salvar_segredo(f"{nome}#{i}", pedaco)
+    salvar_segredo(f"{nome}#n", str(len(pedacos)))  # por último: só "vale" depois de tudo gravado
+    for i in range(len(pedacos), antigos):
+        apagar_segredo(f"{nome}#{i}")
+
+
+def ler_segredo_json(nome: str) -> dict | None:
+    total = ler_segredo(f"{nome}#n")
+    if not total:
+        return None
+    partes = [ler_segredo(f"{nome}#{i}") for i in range(int(total))]
+    if any(p is None for p in partes):
+        return None
+    try:
+        return json.loads("".join(partes))
+    except ValueError:
+        return None
+
+
+def apagar_segredo_json(nome: str) -> None:
+    total = int(ler_segredo(f"{nome}#n") or 0)
+    apagar_segredo(f"{nome}#n")
+    for i in range(total):
+        apagar_segredo(f"{nome}#{i}")
+
+
+def apagar_segredo(nome: str) -> None:
+    try:
+        keyring.delete_password(SERVICO_KEYRING, nome)
+    except keyring.errors.PasswordDeleteError:
+        pass
 
 
 def ler_segredo(nome: str) -> str | None:

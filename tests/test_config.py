@@ -13,6 +13,13 @@ def ambiente(tmp_path, monkeypatch):
     cofre = {}
     monkeypatch.setattr(config.keyring, "get_password", lambda s, n: cofre.get((s, n)))
     monkeypatch.setattr(config.keyring, "set_password", lambda s, n, v: cofre.__setitem__((s, n), v))
+
+    def apagar(s, n):
+        if (s, n) not in cofre:
+            raise config.keyring.errors.PasswordDeleteError(n)
+        del cofre[(s, n)]
+
+    monkeypatch.setattr(config.keyring, "delete_password", apagar)
     return cofre
 
 
@@ -26,6 +33,27 @@ def test_segredos_vao_para_o_keyring(ambiente):
     config.salvar_segredo(config.SEGREDO_LAMPADA_KEY, "segredo")
     assert ambiente == {("mothlit", "lampada_local_key"): "segredo"}
     assert config.ler_segredo(config.SEGREDO_LAMPADA_KEY) == "segredo"
+
+
+def test_segredo_json_grande_vai_em_pedacos(ambiente):
+    dados = {"access_token": "a" * 2500, "refresh_token": "r" * 1500, "expira_em": 1.5}
+    config.salvar_segredo_json("oauth", dados)
+    assert all(len(v) <= 1000 for v in ambiente.values())  # cabe no limite do Windows
+    assert config.ler_segredo_json("oauth") == dados
+    config.salvar_segredo_json("oauth", {"curto": 1})  # regravar menor apaga os pedaços que sobraram
+    assert config.ler_segredo_json("oauth") == {"curto": 1}
+    assert ("mothlit", "oauth#4") not in ambiente
+
+
+def test_fabrica_prefere_oauth(ambiente):
+    from mothlit.devices import criar_auth_smartthings
+    from mothlit.devices.smartthings import AuthOAuth, AuthPAT
+
+    config.salvar_segredo(config.SEGREDO_SMARTTHINGS_PAT, "pat")
+    assert isinstance(criar_auth_smartthings(), AuthPAT)
+    config.salvar_segredo_json(config.SEGREDO_SMARTTHINGS_OAUTH, {
+        "client_id": "c", "client_secret": "s", "access_token": "a", "refresh_token": "r", "expira_em": 0})
+    assert isinstance(criar_auth_smartthings(), AuthOAuth)
 
 
 def test_preferencias_padrao_e_salvas(ambiente):

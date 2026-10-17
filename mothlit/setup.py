@@ -1,12 +1,22 @@
 """Onboarding interativo: `python -m mothlit setup`."""
 
+import re
+import webbrowser
 from getpass import getpass
+from urllib.parse import parse_qs, urlparse
 
 import tinytuya
 
 from . import config
-from .devices import ErroDispositivo
-from .devices.smartthings import AuthPAT, SmartThingsClient
+from .devices import ErroDispositivo, salvar_credenciais_oauth
+from .devices.smartthings import (
+    REDIRECT_PADRAO,
+    AuthOAuth,
+    AuthPAT,
+    SmartThingsClient,
+    trocar_codigo,
+    url_autorizacao,
+)
 
 # Categorias Tuya de iluminação (dj = lâmpada, dd = fita, xdd = teto, fwd = ambiente, dc = cordão)
 _CATEGORIAS_LUZ = {"dj", "dd", "xdd", "fwd", "dc"}
@@ -89,12 +99,17 @@ def _lampada_manual():
 
 def _setup_ar() -> None:
     print(
-        "\nCrie um Personal Access Token em https://account.smartthings.com/tokens\n"
-        "com as permissões de Devices: List, See e Control (r:devices:*, x:devices:*).\n"
-        "Atenção: PATs novos valem só 24 h. Veja no README como usar OAuth."
+        "\nComo o Mothlit vai acessar a SmartThings?\n"
+        "  1) OAuth (recomendado): você autoriza uma vez e o acesso se renova sozinho\n"
+        "     (basta o Mothlit rodar ao menos uma vez a cada 30 dias)\n"
+        "  2) Token pessoal (PAT): mais simples, mas tokens novos expiram em 24 h"
     )
-    token = getpass("Token (não aparece): ").strip()
-    cliente = SmartThingsClient(AuthPAT(token))
+    escolha = input("Opção [1/2] (1): ").strip() or "1"
+    auth = _setup_oauth() if escolha == "1" else _setup_pat()
+    if auth is None:
+        return
+
+    cliente = SmartThingsClient(auth)
     try:
         aparelhos = cliente.listar_dispositivos()
     except ErroDispositivo as e:
@@ -111,11 +126,92 @@ def _setup_ar() -> None:
         print("Nenhum aparelho na conta.")
         return
     escolhido = _escolher(candidatos, lambda a: f"{a.get('label') or a.get('name')}  [{a['deviceId']}]")
-
-    config.salvar_segredo(config.SEGREDO_SMARTTHINGS_PAT, token)
     config.salvar_env({"SMARTTHINGS_DEVICE_ID": escolhido["deviceId"]})
     print(f"Ar-condicionado salvo: {escolhido.get('label')}.")
 
+
+def _setup_pat():
+    print(
+        "\nCrie um Personal Access Token em https://account.smartthings.com/tokens\n"
+        "com as permissões de Devices: List, See e Control (r:devices:*, x:devices:*)."
+    )
+    token = getpass("Token (não aparece): ").strip()
+    if not token:
+        return None
+    config.salvar_segredo(config.SEGREDO_SMARTTHINGS_PAT, token)
+    config.apagar_segredo_json(config.SEGREDO_SMARTTHINGS_OAUTH)  # escolheu PAT: OAuth antigo sai de cena
+    return AuthPAT(token)
+
+
+def _setup_oauth():
+    print(
+        "\nPasso único: criar um app OAuth na sua conta com a SmartThings CLI.\n"
+        "  1. Instale a CLI: baixe o smartthings.msi em\n"
+        "     https://github.com/SmartThingsCommunity/smartthings-cli/releases\n"
+        "  2. Num terminal, rode:  smartthings apps:create\n"
+        "     (na primeira vez ele abre o navegador para você entrar na conta Samsung)\n"
+        "     - Tipo de app:           OAuth-In App\n"
+        "     - Display Name:          Mothlit\n"
+        "     - Description:           Controle pelo PC\n"
+        "     - Icon Image URL e Target URL: deixe em branco (Enter)\n"
+        "     - Escopos:               marque r:devices:* e x:devices:*\n"
+        f"     - Redirect URI:          Add Redirect URI -> {REDIRECT_PADRAO}\n"
+        "       depois 'Finish editing Redirect URIs' e 'Finish and create OAuth-In SmartApp'\n"
+        "  3. Copie o OAuth Client Id e o OAuth Client Secret (o secret só aparece UMA vez)."
+    )
+    client_id = input("\nOAuth Client Id: ").strip()
+    client_secret = getpass("OAuth Client Secret (não aparece): ").strip()
+    if not (client_id and client_secret):
+        print("Client Id e Client Secret são obrigatórios.")
+        return None
+    redirect = input(f"Redirect URI ({REDIRECT_PADRAO}): ").strip() or REDIRECT_PADRAO
+
+    url, state = url_autorizacao(client_id, redirect)
+    print(
+        "\nAbra o endereço abaixo (vou tentar abrir sozinho), entre na conta Samsung e autorize.\n"
+        f"\n  {url}\n\n"
+        "Depois de autorizar, o navegador vai para uma página do httpbin.\n"
+        "Copie o ENDEREÇO completo da barra do navegador (ou só o valor de \"code\") e cole aqui."
+    )
+    webbrowser.open(url)
+    for _ in range(3):
+        try:
+            codigo = extrair_codigo(input("\nEndereço ou código: "), state)
+            credenciais = trocar_codigo(client_id, client_secret, codigo, redirect)
+            break
+        except ValueError as e:
+            print(f"Não entendi: {e}")
+        except ErroDispositivo as e:
+            print(f"Erro: {e}")
+    else:
+        return None
+
+    salvar_credenciais_oauth(credenciais)
+    print("Autorizado! O acesso será renovado automaticamente.")
+    return AuthOAuth(credenciais, salvar=salvar_credenciais_oauth)
+
+
+def extrair_codigo(texto: str, state_esperado: str | None = None) -> str:
+    """Aceita o endereço do redirect, o JSON da página do httpbin ou só o código."""
+    texto = texto.strip()
+    if not texto:
+        raise ValueError("nada foi colado.")
+    if texto.startswith("http"):
+        parametros = parse_qs(urlparse(texto).query)
+        if "error" in parametros:
+            raise ValueError(f"a SmartThings recusou a autorização ({parametros['error'][0]}).")
+        codigo = (parametros.get("code") or [""])[0]
+        state = (parametros.get("state") or [None])[0]
+        if state_esperado and state and state != state_esperado:
+            raise ValueError("o endereço não é desta autorização (state diferente). Use o link novo.")
+    elif "\"code\"" in texto:
+        achado = re.search(r'"code"\s*:\s*"([^"]+)"', texto)
+        codigo = achado.group(1) if achado else ""
+    else:
+        codigo = texto
+    if not re.fullmatch(r"[A-Za-z0-9._~-]+", codigo or ""):
+        raise ValueError("não encontrei o código de autorização.")
+    return codigo
 
 # --- utilitários ---
 

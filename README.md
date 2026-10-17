@@ -43,33 +43,35 @@ No setup, escolha:
 
 ### Ar-condicionado (SmartThings)
 
-#### Personal Access Token (atual)
+O setup pergunta como o Mothlit vai acessar a SmartThings:
 
-1. Acesse <https://account.smartthings.com/tokens> e crie um token com as permissões de **Devices**: *List all devices*, *See all devices* e *Control all devices* (`r:devices:*`, `x:devices:*`).
-2. Rode o setup, cole o token e escolha o ar-condicionado.
+#### 1. OAuth (recomendado: autoriza uma vez e renova sozinho)
 
-**Limitação:** PATs criados depois de 30/12/2024 valem só **24 horas**. Quando expirar, o app mostra "Token da SmartThings inválido ou expirado" e você roda o setup de novo.
+O access token dura cerca de 24 h e é **renovado automaticamente** com o refresh token, que vale 30 dias e muda a cada renovação. Enquanto o Mothlit rodar ao menos uma vez a cada 30 dias, você não precisa fazer mais nada (com "Iniciar com o Windows" ligado, isso é praticamente garantido).
 
-#### OAuth com refresh token (para não renovar todo dia)
+Passo único, criar um app OAuth na sua conta com a [SmartThings CLI](https://github.com/SmartThingsCommunity/smartthings-cli) (o cadastro pelo site ainda não está disponível):
 
-A autenticação fica isolada em `mothlit/devices/smartthings.py`. O `SmartThingsClient` só chama `auth.token()` e, se receber HTTP 401, tenta `auth.renovar()` uma vez. Para usar OAuth basta uma classe `AuthOAuth` com esses dois métodos, sem mexer no resto. *(Ainda não implementada: fica para uma próxima fase.)*
+1. Instale a CLI: baixe e rode o `smartthings.msi` da [página de releases](https://github.com/SmartThingsCommunity/smartthings-cli/releases).
+2. Rode `smartthings apps:create`. Na primeira vez, ele abre o navegador para você entrar na conta Samsung.
+   - Tipo de app: **OAuth-In App**
+   - Display Name: `Mothlit` · Description: qualquer texto · Icon Image URL e Target URL: em branco
+   - Escopos: `r:devices:*` e `x:devices:*`
+   - Redirect URI: **Add Redirect URI** › `https://httpbin.org/get` › *Finish editing Redirect URIs* › *Finish and create OAuth-In SmartApp*
+3. Guarde o **OAuth Client Id** e o **OAuth Client Secret**. O secret só aparece uma vez.
+4. Rode `uv run python -m mothlit setup`, escolha **OAuth** e cole o Client Id e o Client Secret. O navegador abre a tela de autorização da Samsung. Depois de autorizar, ele vai para uma página do httpbin: copie o **endereço completo** da barra do navegador e cole no setup.
 
-Passos para obter as credenciais:
+Detalhes:
+- As credenciais (client id/secret e tokens) ficam no keyring, em pedaços se forem grandes (o Windows limita cada segredo a ~1280 caracteres).
+- Cada refresh token só pode ser usado uma vez. O Mothlit grava o novo no keyring na hora e renova de forma thread-safe (várias chamadas simultâneas causam uma única renovação).
+- O Mothlit tenta `https://api.smartthings.com/oauth/token` e, se não existir, `.../v1/oauth/token` (a documentação nova e a comunidade citam endereços diferentes).
+- Se a autorização expirar (mais de 30 dias sem rodar, ou revogada), o app avisa e basta rodar o setup de novo.
 
-1. Instale a [SmartThings CLI](https://github.com/SmartThingsCommunity/smartthings-cli). O tipo de app OAuth não aparece no Developer Workspace.
-2. `smartthings apps:create` › escolha **OAuth-In App**. Informe um nome, os escopos `r:devices:*` e `x:devices:*` e uma *redirect URI* (ex.: `https://httpbin.org/get`). Guarde o **client_id** e o **client_secret**.
-3. Abra no navegador:
-   `https://api.smartthings.com/oauth/authorize?client_id=<ID>&response_type=code&redirect_uri=<URI>&scope=r:devices:*+x:devices:*`
-   Autorize e copie o `code` da URL de retorno.
-4. Troque o `code` por tokens fazendo um `POST` no endpoint de token com *Basic auth* `client_id:client_secret` e `grant_type=authorization_code&code=<code>&redirect_uri=<URI>`.
-5. Para renovar, faça o mesmo `POST` com `grant_type=refresh_token&refresh_token=<atual>`.
+#### 2. Token pessoal (PAT)
 
-Pontos importantes:
+1. Acesse <https://account.smartthings.com/tokens> e crie um token com as permissões de **Devices**: *List*, *See* e *Control* (`r:devices:*`, `x:devices:*`).
+2. No setup, escolha **Token pessoal** e cole o token.
 
-- O access token dura cerca de 24 h. O refresh token vale de 29 a 30 dias se não for usado.
-- **Cada refresh token só pode ser usado uma vez.** A resposta traz um novo, que precisa ir para o keyring imediatamente. Se a cadeia quebrar, é preciso autorizar de novo (passo 3).
-- A documentação oficial e a comunidade citam URLs diferentes para o endpoint de token (`https://api.smartthings.com/oauth/token` e `https://api.smartthings.com/v1/oauth/token`). Confirme a URL atual em [Token management](https://developer.smartthings.com/docs/service-integrations/token-management).
-
+**Limitação:** PATs criados depois de 30/12/2024 valem só **24 horas**. Quando expirar, cole um novo em **Configurações › Acesso à SmartThings**: o Mothlit valida o token antes de salvar.
 ## Uso
 
 ```powershell

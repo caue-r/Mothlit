@@ -82,7 +82,8 @@ def test_401_tenta_renovar_uma_vez():
         def token(self):
             return self.atual
 
-        def renovar(self):
+        def renovar(self, token_rejeitado=None):
+            assert token_rejeitado == "velho"
             self.atual = "novo"
             return True
 
