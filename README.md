@@ -114,7 +114,7 @@ O `instalar.ps1` (sem administrador):
 - fecha o Mothlit instalado se ele estiver aberto;
 - se "Iniciar com o Windows" estiver ligado, aponta o registro para o novo `Mothlit.exe`.
 
-Configuração (`%APPDATA%\Mothlit`) e segredos (keyring) ficam fora da pasta do app, então reinstalar ou atualizar não perde nada. **Para atualizar** o app instalado depois de mudanças no código, dê dois cliques em `empacotamento\atualizar.cmd`: ele gera o build e reinstala. O app instalado é uma cópia e não muda sozinho. Se o Mothlit estiver aberto, o instalador pede para ele sair (sem deixar ícone fantasma na bandeja) e o reabre na bandeja com a versão nova.
+Configuração (`%APPDATA%\Mothlit`) e segredos (keyring) ficam fora da pasta do app, então reinstalar ou atualizar não perde nada. **Para atualizar** o app instalado depois de mudanças no código, dê dois cliques em `empacotamento\atualizar.cmd`: ele gera o build, roda `mothlit-cli verificar` no executável novo (ícones, interface, bandeja, keyring; sem abrir janela nem usar a rede) e só reinstala se tudo passar. O app instalado é uma cópia e não muda sozinho. Se o Mothlit estiver aberto, o instalador pede para ele sair (sem deixar ícone fantasma na bandeja) e o reabre na bandeja com a versão nova.
 
 O executável grava um log em `%APPDATA%\Mothlit\mothlit.log` (com rotação, até ~3 MB): é onde olhar se algo der errado, já que não há console.
 

@@ -85,10 +85,15 @@ def imagem_bandeja(tamanho: int, cor: str = "#f4f4f5") -> Image.Image:
     return img
 
 
+# Aumente ao mudar o desenho da bandeja: o nome do arquivo muda e o .ico é regerado.
+# (Não dá para comparar com a data deste .py: no executável ele não existe como arquivo.)
+VERSAO_ICONE_BANDEJA = 2
+
+
 def ico_bandeja() -> Path:
     """.ico multi-tamanho da bandeja (cada tamanho desenhado nativamente), em %APPDATA%\\Mothlit."""
-    caminho = config.pasta_config() / "bandeja.ico"
-    if not caminho.exists() or caminho.stat().st_mtime < Path(__file__).stat().st_mtime:
+    caminho = config.pasta_config() / f"bandeja-v{VERSAO_ICONE_BANDEJA}.ico"
+    if not caminho.exists():
         caminho.parent.mkdir(parents=True, exist_ok=True)
         quadros = [imagem_bandeja(t) for t in TAMANHOS_BANDEJA]
         maior = quadros[-1]

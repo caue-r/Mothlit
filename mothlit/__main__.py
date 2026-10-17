@@ -78,9 +78,42 @@ def test_ar() -> None:
     print("OK")
 
 
+def verificar() -> None:
+    """Confere tudo o que a inicialização do app usa, sem abrir janela nem acessar a rede.
+
+    Roda no executável recém-gerado antes de instalar (atualizar.cmd): pega problemas que
+    só aparecem empacotado, como arquivos que não existem dentro do .exe.
+    """
+    import keyring
+    import pystray
+    import webview  # noqa: F401  (o pywebview e o pythonnet precisam importar no executável)
+
+    from .tray import Bandeja
+    from .ui import app, marca
+
+    passos = [
+        ("Interface (web/index.html)", lambda: (app.WEB / "index.html").is_file() or _falha("não encontrada")),
+        ("Ícone da janela", marca.arquivo_ico),
+        ("Ícone da bandeja", marca.ico_bandeja),
+        ("Keyring do Windows", lambda: "Windows" in type(keyring.get_keyring()).__module__
+            or _falha(type(keyring.get_keyring()).__name__)),
+        ("Bandeja (pystray)", lambda: Bandeja(app.Api(), ao_abrir=lambda: None, ao_sair=lambda: None)),
+        ("Backend da bandeja", lambda: pystray.Icon.__module__.endswith("_win32") or _falha(pystray.Icon.__module__)),
+        ("Configuração e aparelhos", app.Api.da_configuracao),
+    ]
+    for nome, passo in passos:
+        passo()
+        print(f"  ok  {nome}")
+    print("Tudo certo.")
+
+
+def _falha(motivo: str):
+    raise RuntimeError(motivo)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="mothlit", description="Controle da lâmpada e do ar-condicionado.")
-    parser.add_argument("comando", nargs="?", choices=["setup", "test-lampada", "test-ar"])
+    parser.add_argument("comando", nargs="?", choices=["setup", "test-lampada", "test-ar", "verificar"])
     parser.add_argument("--bandeja", action="store_true", help="abre escondido na bandeja (usado ao iniciar com o Windows)")
     args = parser.parse_args()
 
@@ -93,6 +126,12 @@ def main() -> int:
             test_lampada()
         elif args.comando == "test-ar":
             test_ar()
+        elif args.comando == "verificar":
+            try:
+                verificar()
+            except Exception as e:
+                print(f"  FALHOU: {type(e).__name__}: {e}", file=sys.stderr)
+                return 1
         else:
             from .ui.app import executar
 

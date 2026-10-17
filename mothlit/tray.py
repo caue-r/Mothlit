@@ -55,11 +55,16 @@ class Bandeja:
         self._ao_abrir = ao_abrir
         self._ao_sair = ao_sair
         self._ao_alterar = ao_alterar
+        try:
+            ico = marca.ico_bandeja()
+        except Exception:  # o ícone nítido é cosmético: nunca pode impedir o app de abrir
+            log.exception("Não consegui gerar o ícone da bandeja; usando o padrão")
+            ico = None
         self._icone = _IconeNitido(
             "mothlit",
             marca.imagem_bandeja(64),
             "Mothlit",
-            ico=marca.ico_bandeja(),
+            ico=ico,
             menu=pystray.Menu(
                 pystray.MenuItem("Abrir Mothlit", self._abrir, default=True),
                 pystray.Menu.SEPARATOR,

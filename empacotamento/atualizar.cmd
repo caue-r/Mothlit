@@ -10,4 +10,12 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+echo Conferindo o executavel gerado...
+"dist\Mothlit\mothlit-cli.exe" verificar
+if errorlevel 1 (
+    echo.
+    echo O executavel novo falhou na verificacao. A versao instalada NAO foi alterada.
+    pause
+    exit /b 1
+)
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0instalar.ps1" %*
