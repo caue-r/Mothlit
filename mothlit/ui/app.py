@@ -1,171 +1,186 @@
-"""Janela principal do Mothlit: estreita, sem borda do Windows, com barra de título própria."""
+"""Janela do Mothlit com pywebview (WebView2 no Windows).
+
+A interface é HTML/CSS/JS em `web/`. O JavaScript chama os métodos públicos de
+`Api` (`pywebview.api.<metodo>()`); o pywebview executa cada chamada numa thread
+separada, então a rede nunca trava a interface. Toda resposta é um dict simples:
+`{"ok": True, "dados": ...}` ou `{"ok": False, "erro": "mensagem amigável"}`.
+"""
 
 import ctypes
+import logging
+import os
 import sys
-import time
+from pathlib import Path
+from typing import Any, Callable
 
-import customtkinter as ctk
+import webview
 
 from .. import config
 from ..config import ErroConfiguracao
-from ..devices import criar_ar, criar_lampada
-from . import marca, tema
-from .painel_ar import PainelAr
-from .painel_lampada import PainelLampada
-from .widgets import Abas, BotaoIcone
-from .worker import Worker
+from ..devices import ArCondicionado, ErroDispositivo, EstadoAr, EstadoLampada, Lampada, criar_ar, criar_lampada
+from . import marca
 
-LARGURA, ALTURA = 440, 740
+WEB = Path(__file__).resolve().parent / "web"
+LARGURA, ALTURA = 420, 760
+FUNDO = "#09090b"
+
+log = logging.getLogger(__name__)
 
 
-class App(ctk.CTk):
-    def __init__(self):
-        super().__init__(fg_color=tema.FUNDO)
-        self.title("Mothlit")
-        self.geometry(f"{LARGURA}x{ALTURA}")
-        self.resizable(False, False)
-        try:
-            self.iconbitmap(str(marca.arquivo_ico()))
-        except Exception:  # ícone é cosmético; nunca impede a janela de abrir
-            pass
-        self.worker = Worker(self)
-        self._erro_visivel_ate = 0.0
+def _ar_dict(e: EstadoAr) -> dict[str, Any]:
+    return {
+        "nome": e.rotulo,
+        "ligado": e.ligado,
+        "alvo": e.temperatura_alvo,
+        "faixa": list(e.faixa_alvo),
+        "ambiente": e.temperatura_ambiente,
+        "modo": e.modo,
+        "modos": e.modos,
+        "ventilador": e.ventilador,
+        "ventiladores": e.ventiladores,
+        "opcional": e.modo_opcional,
+        "opcionais": e.modos_opcionais,
+        "oscilacao": e.oscilacao,
+        "oscilacoes": e.oscilacoes,
+    }
 
-        self._barra_titulo()
 
-        self.abas = Abas(self, ["Clima", "Luz"], self._trocar_aba, altura=42)
-        self.abas.pack(fill="x", padx=20, pady=(4, 14))
+def _luz_dict(e: EstadoLampada, nome: str) -> dict[str, Any]:
+    return {
+        "nome": nome,
+        "ligada": e.ligada,
+        "modo": e.modo,
+        "brilho": e.brilho,
+        "temperatura": e.temperatura_cor,
+        "hsv": list(e.cor_hsv) if e.cor_hsv else None,
+        "suportaCor": e.suporta_cor,
+        "suportaTemperatura": e.suporta_temperatura,
+    }
 
-        self.conteudo = ctk.CTkFrame(self, fg_color="transparent")
-        self.conteudo.pack(fill="both", expand=True, padx=20)
-        self.painel_ar = PainelAr(self.conteudo, self.worker, self.mostrar_status)
-        self.painel_lampada = PainelLampada(self.conteudo, self.worker, self.mostrar_status)
 
-        rodape = ctk.CTkFrame(self, fg_color="transparent")
-        rodape.pack(fill="x", padx=20, pady=(8, 16))
-        self.barra = ctk.CTkLabel(rodape, text="", font=tema.fonte(11), text_color=tema.TEXTO_SUAVE, anchor="w")
-        self.barra.pack(side="left", fill="x", expand=True)
-        BotaoIcone(rodape, tema.ICONE_ATUALIZAR, self.atualizar, tamanho=38, tamanho_icone=15).pack(side="right")
+def _criar(fabrica):
+    try:
+        return fabrica(), None
+    except ErroConfiguracao as e:
+        return None, str(e)
 
-        self._trocar_aba("Clima")
-        self._conectar(self.painel_lampada, criar_lampada)
-        self._conectar(self.painel_ar, criar_ar)
-        self.protocol("WM_DELETE_WINDOW", self.fechar)
-        self.after(10, self._janela_sem_borda)
-        self.atualizar()
 
-    # --- barra de título própria ---
+class Api:
+    """Métodos chamados pelo JavaScript. Atributos privados (com _) não são expostos."""
 
-    def _barra_titulo(self) -> None:
-        barra = ctk.CTkFrame(self, fg_color="transparent", height=56)
-        barra.pack(fill="x", padx=20, pady=(14, 8))
-        logo = ctk.CTkLabel(barra, text="", image=marca.ctk_imagem(30))
-        logo.pack(side="left")
-        titulo = ctk.CTkLabel(barra, text="Mothlit", font=tema.fonte(17), text_color=tema.TEXTO)
-        titulo.pack(side="left", padx=10)
-        BotaoIcone(barra, tema.ICONE_FECHAR, self.fechar, tamanho=34, tamanho_icone=12).pack(side="right")
-        BotaoIcone(barra, tema.ICONE_MINIMIZAR, self.minimizar, tamanho=34, tamanho_icone=12).pack(
-            side="right", padx=8)
-        BotaoIcone(barra, tema.ICONE_ENGRENAGEM, self.abrir_configuracoes, tamanho=34, tamanho_icone=14).pack(
-            side="right")
-        # arrastar a janela pela barra
-        for w in (barra, titulo, logo):
-            w.bind("<ButtonPress-1>", self._iniciar_arraste)
-            w.bind("<B1-Motion>", self._arrastar)
+    def __init__(self, lampada: Lampada | None = None, ar: ArCondicionado | None = None,
+                 erro_lampada: str | None = None, erro_ar: str | None = None):
+        self._lampada, self._erro_lampada = lampada, erro_lampada
+        self._ar, self._erro_ar = ar, erro_ar
+        self._janela = None
 
-    def _iniciar_arraste(self, e) -> None:
-        self._arraste = (e.x_root - self.winfo_x(), e.y_root - self.winfo_y())
+    @classmethod
+    def da_configuracao(cls) -> "Api":
+        lampada, erro_lampada = _criar(criar_lampada)
+        ar, erro_ar = _criar(criar_ar)
+        return cls(lampada, ar, erro_lampada, erro_ar)
 
-    def _arrastar(self, e) -> None:
-        dx, dy = self._arraste
-        self.geometry(f"+{e.x_root - dx}+{e.y_root - dy}")
+    # --- ar-condicionado ---
 
-    def _janela_sem_borda(self) -> None:
-        """Remove a moldura do Windows mantendo ícone na barra de tarefas e cantos arredondados (Win 11)."""
-        self.overrideredirect(True)
-        if sys.platform != "win32":
-            return
-        try:
-            hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
-            GWL_EXSTYLE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW = -20, 0x00040000, 0x00000080
-            estilo = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, (estilo & ~WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW)
-            DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND = 33, 2
-            preferencia = ctypes.c_int(DWMWCP_ROUND)
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
-                                                       ctypes.byref(preferencia), ctypes.sizeof(preferencia))
-            # borda fina e discreta (COLORREF = 0x00BBGGRR)
-            DWMWA_BORDER_COLOR = 34
-            borda = ctypes.c_int(0x00272422)
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ctypes.byref(borda),
-                                                       ctypes.sizeof(borda))
-            self._hwnd = hwnd
-        except (AttributeError, OSError):
-            self._hwnd = None
-        # reaplica o estilo para a barra de tarefas reconhecer a janela
-        self.withdraw()
-        self.after(10, self.deiconify)
+    def estado_ar(self):
+        return self._usar_ar(lambda ar: _ar_dict(ar.estado()))
 
-    def minimizar(self) -> None:
-        hwnd = getattr(self, "_hwnd", None)
-        if hwnd:
-            ctypes.windll.user32.ShowWindow(hwnd, 6)  # SW_MINIMIZE (iconify() não funciona sem moldura)
-        else:
-            self.iconify()
+    def ar_ligar(self, ligar: bool):
+        return self._usar_ar(lambda ar: ar.ligar() if ligar else ar.desligar())
 
-    # --- conteúdo ---
+    def ar_temperatura(self, valor: float):
+        return self._usar_ar(lambda ar: ar.definir_temperatura(float(valor)))
 
-    def _trocar_aba(self, nome: str) -> None:
-        self.painel_ar.pack_forget()
-        self.painel_lampada.pack_forget()
-        (self.painel_ar if nome == "Clima" else self.painel_lampada).pack(fill="both", expand=True)
+    def ar_modo(self, modo: str):
+        return self._usar_ar(lambda ar: ar.definir_modo(str(modo)))
+
+    def ar_ventilador(self, velocidade: str):
+        return self._usar_ar(lambda ar: ar.definir_ventilador(str(velocidade)))
+
+    def ar_opcional(self, modo: str):
+        return self._usar_ar(lambda ar: ar.definir_modo_opcional(str(modo)))
+
+    def ar_oscilacao(self, modo: str):
+        return self._usar_ar(lambda ar: ar.definir_oscilacao(str(modo)))
+
+    # --- lâmpada ---
+
+    def estado_luz(self):
+        return self._usar_luz(lambda luz: _luz_dict(luz.estado(), luz.nome))
+
+    def luz_ligar(self, ligar: bool):
+        return self._usar_luz(lambda luz: luz.ligar() if ligar else luz.desligar())
+
+    def luz_brilho(self, porcentagem: int):
+        return self._usar_luz(lambda luz: luz.definir_brilho(round(porcentagem)))
+
+    def luz_temperatura(self, porcentagem: int):
+        return self._usar_luz(lambda luz: luz.definir_temperatura_cor(round(porcentagem)))
+
+    def luz_hsv(self, h: float, s: float, v: float):
+        return self._usar_luz(lambda luz: luz.definir_hsv(h, s, v))
+
+    # --- janela e configuração ---
+
+    def configuracoes(self):
+        cfg = config.carregar()
+        return {"ok": True, "dados": {
+            "lampadaIp": cfg.lampada_ip or "–",
+            "lampadaVersao": cfg.lampada_versao,
+            "arId": cfg.ar_device_id or "–",
+            "env": str(config.caminho_env()),
+        }}
+
+    def minimizar(self):
+        if self._janela:
+            self._janela.minimize()
+
+    def fechar(self):
+        if self._janela:
+            self._janela.destroy()
+
+    # --- internos ---
+
+    def _usar_ar(self, acao: Callable[[ArCondicionado], Any]):
+        return self._executar(self._ar, self._erro_ar, acao)
+
+    def _usar_luz(self, acao: Callable[[Lampada], Any]):
+        return self._executar(self._lampada, self._erro_lampada, acao)
 
     @staticmethod
-    def _conectar(painel, fabrica) -> None:
+    def _executar(dispositivo, erro_config, acao):
+        if dispositivo is None:
+            return {"ok": False, "configurado": False, "erro": erro_config}
         try:
-            painel.definir_dispositivo(fabrica())
-        except ErroConfiguracao as e:
-            painel.definir_dispositivo(None, str(e))
+            return {"ok": True, "dados": acao(dispositivo)}
+        except ErroDispositivo as e:
+            return {"ok": False, "configurado": True, "erro": str(e)}
+        except Exception as e:  # nunca deixa a interface sem resposta
+            log.exception("Erro inesperado")
+            return {"ok": False, "configurado": True, "erro": f"Erro inesperado: {e}"}
 
-    def atualizar(self) -> None:
-        self.mostrar_status("Atualizando…")
-        self.painel_lampada.atualizar()
-        self.painel_ar.atualizar()
 
-    def mostrar_status(self, mensagem: str, erro: bool = False, sutil: bool = False) -> None:
-        """`sutil`: mensagens de rotina, que não devem esconder um erro recente."""
-        agora = time.monotonic()
-        if sutil and agora < self._erro_visivel_ate:
-            return
-        self._erro_visivel_ate = agora + 8 if erro else 0.0
-        texto = f"{time.strftime('%H:%M')} · {mensagem}" if erro else mensagem
-        self.barra.configure(text=texto, text_color=tema.ERRO if erro else tema.TEXTO_SUAVE)
-
-    def abrir_configuracoes(self) -> None:
-        janela = ctk.CTkToplevel(self, fg_color=tema.FUNDO)
-        janela.title("Configurações")
-        janela.geometry("420x230")
-        janela.transient(self)
-        cfg = config.carregar()
-        linhas = [
-            ("Lâmpada", f"{cfg.lampada_ip or '–'}  ·  protocolo {cfg.lampada_versao}"),
-            ("Ar-condicionado", cfg.ar_device_id or "–"),
-            ("Arquivo .env", str(config.caminho_env())),
-            ("Segredos", "Gerenciador de Credenciais do Windows (mothlit)"),
-        ]
-        for rotulo, valor in linhas:
-            ctk.CTkLabel(janela, text=rotulo, font=tema.fonte(11), text_color=tema.TEXTO_SUAVE, anchor="w",
-                         height=14).pack(fill="x", padx=20, pady=(10, 0))
-            ctk.CTkLabel(janela, text=valor, font=tema.fonte(12), text_color=tema.TEXTO, anchor="w",
-                         wraplength=380, justify="left").pack(fill="x", padx=20)
-        ctk.CTkLabel(janela, text="Para reconfigurar: uv run python -m mothlit setup", font=tema.fonte(11),
-                     text_color=tema.DESTAQUE, anchor="w").pack(fill="x", padx=20, pady=(14, 0))
-
-    def fechar(self) -> None:
-        self.worker.encerrar()
-        self.destroy()
+def _cantos_arredondados(janela) -> None:
+    """Windows 11: cantos arredondados e borda discreta na janela sem moldura."""
+    if sys.platform != "win32":
+        return
+    try:
+        hwnd = janela.native.Handle.ToInt32()
+        for atributo, valor in ((33, 2), (34, 0x00272422)):  # CORNER_PREFERENCE=ROUND, BORDER_COLOR (0x00BBGGRR)
+            v = ctypes.c_int(valor)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, atributo, ctypes.byref(v), ctypes.sizeof(v))
+    except Exception:  # cosmético: sem isso a janela só fica com cantos retos
+        log.debug("Não consegui arredondar os cantos", exc_info=True)
 
 
 def executar() -> None:
-    ctk.set_appearance_mode("dark")
-    App().mainloop()
+    debug = bool(os.environ.get("MOTHLIT_DEBUG"))
+    api = Api.da_configuracao()
+    janela = webview.create_window(
+        "Mothlit", url=str(WEB / "index.html"), js_api=api, width=LARGURA, height=ALTURA,
+        resizable=False, frameless=True, easy_drag=False, background_color=FUNDO,
+    )
+    api._janela = janela
+    janela.events.shown += lambda: _cantos_arredondados(janela)
+    janela.events.restored += lambda: janela.evaluate_js("window.aoRestaurar && aoRestaurar()")
+    webview.start(debug=debug, icon=str(marca.arquivo_ico()))

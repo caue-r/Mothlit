@@ -1,19 +1,19 @@
-"""Ícone do Mothlit (mariposa) a partir de assets/moth.svg.
+"""Ícone do Mothlit (mariposa) a partir de web/moth.svg.
 
 O SVG usa só comandos M/L/Z absolutos, então dá para rasterizar com Pillow
-sem dependências extras.
+sem dependências extras. A interface web usa o SVG direto; aqui geramos o .ico
+da janela/barra de tarefas (e da bandeja, na Fase 3).
 """
 
 import re
 from functools import lru_cache
 from pathlib import Path
 
-import customtkinter as ctk
 from PIL import Image, ImageDraw
 
 from .. import config
 
-SVG = Path(__file__).resolve().parent.parent / "assets" / "moth.svg"
+SVG = Path(__file__).resolve().parent / "web" / "moth.svg"
 
 
 @lru_cache(maxsize=1)
@@ -40,7 +40,7 @@ def _poligonos() -> tuple[list[list[tuple[float, float]]], float]:
 @lru_cache(maxsize=None)
 def imagem(tamanho: int, cor: str = "#f4f4f5") -> Image.Image:
     """Silhueta da mariposa, recortada nas bordas e centralizada num quadrado."""
-    poligonos, lado = _poligonos()
+    poligonos, _ = _poligonos()
     escala = 4
     grande = tamanho * escala
     img = Image.new("RGBA", (grande, grande), (0, 0, 0, 0))
@@ -54,11 +54,6 @@ def imagem(tamanho: int, cor: str = "#f4f4f5") -> Image.Image:
     for p in poligonos:
         d.polygon([(x * fator + dx, y * fator + dy) for x, y in p], fill=cor)
     return img.resize((tamanho, tamanho), Image.LANCZOS)
-
-
-def ctk_imagem(tamanho: int, cor: str = "#f4f4f5") -> ctk.CTkImage:
-    img = imagem(tamanho, cor)
-    return ctk.CTkImage(light_image=img, dark_image=img, size=(tamanho, tamanho))
 
 
 def arquivo_ico() -> Path:

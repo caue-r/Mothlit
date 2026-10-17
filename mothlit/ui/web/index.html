@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Mothlit</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <header class="titulo pywebview-drag-region">
+    <img class="logo pywebview-drag-region" src="moth.svg" alt="">
+    <span class="nome pywebview-drag-region">Mothlit</span>
+    <div class="acoes-janela">
+      <button class="botao-icone" id="btn-config" title="Configurações" data-icone="ajustes"></button>
+      <button class="botao-icone" id="btn-min" title="Minimizar" data-icone="menos"></button>
+      <button class="botao-icone" id="btn-fechar" title="Fechar" data-icone="fechar"></button>
+    </div>
+  </header>
+
+  <nav class="abas" id="abas">
+    <span class="indicador"></span>
+    <button data-alvo="clima" class="ativa">Clima</button>
+    <button data-alvo="luz">Luz</button>
+  </nav>
+
+  <main class="paginas">
+
+    <!-- ===================== Clima ===================== -->
+    <section class="pagina ativa" id="pg-clima">
+      <article class="card desligado" id="card-ar">
+        <div class="card-topo">
+          <div>
+            <h2 id="ar-nome">Ar-condicionado</h2>
+            <p class="situacao" id="ar-situacao">Conectando…</p>
+          </div>
+          <button class="energia" id="ar-energia" title="Ligar/desligar" data-icone="energia"></button>
+        </div>
+
+        <div class="ilustracao-ar">
+          <svg viewBox="0 0 300 170" aria-hidden="true">
+            <defs>
+              <linearGradient id="g-corpo" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#fafafa"/>
+                <stop offset="1" stop-color="#d4d4d8"/>
+              </linearGradient>
+              <linearGradient id="g-vento" gradientUnits="userSpaceOnUse" x1="0" y1="78" x2="0" y2="168">
+                <stop offset="0" stop-color="#e4e4e7" stop-opacity=".6"/>
+                <stop offset="1" stop-color="#e4e4e7" stop-opacity="0"/>
+              </linearGradient>
+              <filter id="sombra" x="-20%" y="-30%" width="140%" height="190%">
+                <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000" flood-opacity=".6"/>
+              </filter>
+            </defs>
+            <g class="vento" id="ar-vento"></g>
+            <rect x="20" y="8" width="260" height="72" rx="16" fill="url(#g-corpo)" filter="url(#sombra)"/>
+            <rect x="34" y="60" width="232" height="9" rx="4.5" fill="#18181b"/>
+            <rect x="38" y="62.5" width="224" height="2.5" rx="1.25" fill="#3f3f46"/>
+            <circle class="led" cx="40" cy="26" r="2.2"/>
+            <text class="visor" id="ar-visor" x="258" y="38" text-anchor="end"></text>
+          </svg>
+        </div>
+
+        <div class="temperaturas">
+          <div class="alvo"><span id="ar-alvo">–</span><small>°C</small></div>
+          <div class="ambiente">
+            <span class="rotulo">No ambiente</span>
+            <span id="ar-ambiente">– °C</span>
+          </div>
+        </div>
+
+        <div class="ajustavel">
+          <div class="controle-alvo">
+            <button class="botao-icone" id="ar-menos" data-icone="menos" title="Diminuir"></button>
+            <input type="range" class="slider" id="ar-slider" min="16" max="30" step="1" value="16">
+            <button class="botao-icone" id="ar-mais" data-icone="mais" title="Aumentar"></button>
+          </div>
+          <div class="limites"><span id="ar-min">16°</span><span id="ar-max">30°</span></div>
+
+          <div class="blocos">
+            <button class="bloco" data-campo="modo"><span class="bloco-icone" data-icone="floco"></span>
+              <span class="seta" data-icone="seta"></span><span class="bloco-titulo">Modo</span><span class="bloco-valor">–</span></button>
+            <button class="bloco" data-campo="ventilador"><span class="bloco-icone" data-icone="ventilador"></span>
+              <span class="seta" data-icone="seta"></span><span class="bloco-titulo">Ventilação</span><span class="bloco-valor">–</span></button>
+            <button class="bloco" data-campo="opcional"><span class="bloco-icone" data-icone="lua"></span>
+              <span class="seta" data-icone="seta"></span><span class="bloco-titulo">Dormir</span><span class="bloco-valor">–</span></button>
+            <button class="bloco" data-campo="oscilacao"><span class="bloco-icone" data-icone="oscilar"></span>
+              <span class="seta" data-icone="seta"></span><span class="bloco-titulo">Oscilação</span><span class="bloco-valor">–</span></button>
+          </div>
+        </div>
+        <p class="dica" id="ar-dica">Ligue o aparelho para ajustar temperatura e ventilação.</p>
+      </article>
+    </section>
+
+    <!-- ===================== Luz ===================== -->
+    <section class="pagina" id="pg-luz">
+      <article class="card" id="card-luz">
+        <div class="card-topo">
+          <div>
+            <h2 id="luz-nome">Lâmpada</h2>
+            <p class="situacao" id="luz-situacao">Conectando…</p>
+          </div>
+          <button class="energia" id="luz-energia" title="Ligar/desligar" data-icone="energia"></button>
+        </div>
+
+        <div class="quarto apagado" id="quarto">
+          <svg viewBox="0 0 360 200" aria-hidden="true">
+            <defs>
+              <radialGradient id="g-luz" gradientUnits="userSpaceOnUse" cx="180" cy="36" r="250">
+                <stop offset="0" class="luz-0"/>
+                <stop offset=".45" class="luz-1"/>
+                <stop offset="1" class="luz-2"/>
+              </radialGradient>
+            </defs>
+            <rect width="360" height="200" fill="#18181b"/>
+            <polygon points="0,0 360,0 265,60 95,60" fill="#26262a"/>
+            <polygon points="0,0 95,60 95,160 0,200" fill="#1c1c20"/>
+            <polygon points="360,0 265,60 265,160 360,200" fill="#202024"/>
+            <polygon points="0,200 95,160 265,160 360,200" fill="#121215"/>
+            <rect x="95" y="60" width="170" height="100" fill="#2a2a2f"/>
+            <g stroke="#3a3a40" stroke-width="3" stroke-linecap="round">
+              <path d="M300 76 340 68M300 85 340 77M300 94 340 86M300 103 340 95M300 112 340 104M300 121 340 113M300 130 340 122"/>
+            </g>
+            <polygon points="120,150 240,150 262,178 98,178" fill="#323238"/>
+            <rect x="98" y="178" width="164" height="8" fill="#26262b"/>
+            <rect class="luz" width="360" height="200" fill="url(#g-luz)"/>
+            <polygon class="painel" points="150,26 210,26 222,42 138,42"/>
+          </svg>
+        </div>
+
+        <div class="linha-brilho">
+          <span class="icone-suave" data-icone="sol"></span>
+          <input type="range" class="slider" id="luz-brilho" min="1" max="100" step="1" value="1">
+          <span class="valor" id="luz-brilho-valor">–</span>
+        </div>
+      </article>
+
+      <nav class="abas abas-sub" id="abas-luz">
+        <span class="indicador"></span>
+        <button data-alvo="cores" class="ativa">Cores</button>
+        <button data-alvo="branco">Branco</button>
+      </nav>
+
+      <div class="subpaginas">
+        <div class="subpagina ativa" id="sub-cores">
+          <div class="disco" id="disco"><span class="marca" id="disco-marca"></span></div>
+        </div>
+        <div class="subpagina" id="sub-branco">
+          <div class="legenda"><span>Quente</span><span>Frio</span></div>
+          <input type="range" class="slider slider-temp" id="luz-temp" min="0" max="100" step="1" value="50">
+          <div class="presets">
+            <button data-temp="0">Quente</button>
+            <button data-temp="50">Neutro</button>
+            <button data-temp="100">Frio</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="rodape">
+    <span class="status" id="status"></span>
+    <button class="botao-icone" id="btn-atualizar" title="Atualizar" data-icone="atualizar"></button>
+  </footer>
+
+  <div class="menu" id="menu" role="menu"></div>
+
+  <div class="folha-fundo" id="folha-fundo">
+    <div class="folha" id="folha">
+      <div class="folha-topo">
+        <h3>Configurações</h3>
+        <button class="botao-icone" id="folha-fechar" data-icone="fechar" title="Fechar"></button>
+      </div>
+      <dl id="folha-dados"></dl>
+      <p class="folha-dica">Para reconfigurar: <code>uv run python -m mothlit setup</code></p>
+    </div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

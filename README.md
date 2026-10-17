@@ -93,18 +93,15 @@ mothlit/
                          airConditionerMode, airConditionerFanMode, temperatureMeasurement,
                          fanOscillationMode, custom.airConditionerOptionalMode
   ui/
-    app.py               janela sem borda (barra de título própria), abas Clima/Luz
-    painel_ar.py         ilustração animada, alvo −/+, blocos de modo/ventilação/dormir/oscilação
-    painel_lampada.py    quarto iluminado na cor atual, roda de cores, ajustes de branco
-    widgets.py           botão redondo, abas em pílula, bloco com menu, roda de cores
-    desenhos.py          ilustrações geradas com Pillow
-    tema.py              cores, fontes e ícones (Segoe Fluent Icons do Windows)
-    worker.py            rede em threads, resultado entregue à UI via after()
+    app.py               janela pywebview (sem moldura) + Api: a ponte que o JavaScript chama
+    marca.py             gera o .ico da mariposa a partir de web/moth.svg
+    web/                 interface em HTML/CSS/JS (index.html, estilo.css, app.js, moth.svg)
 tests/                   pytest com mocks (tinytuya mockado, httpx.MockTransport)
 ```
 
 ## Detalhes técnicos
 
+- **Interface**: [pywebview](https://pywebview.flowrl.com/) usando o WebView2 (motor do Edge, já incluso no Windows 11). O visual é HTML/CSS/SVG, com transições aceleradas por GPU. Cada chamada do JavaScript para `pywebview.api` roda numa thread separada no Python, então a rede nunca trava a interface. Para abrir as ferramentas de desenvolvedor: `set MOTHLIT_DEBUG=1`.
 - **Lâmpada**: o tipo (A/B/C) é detectado pelos DPS com `detect_bulb()`. Temperatura de cor e cor só aparecem se a lâmpada tiver esses recursos. O tempo limite é de 2 s com 2 tentativas, em vez do padrão do tinytuya (5 s × 5 tentativas). O socket é protegido por uma trava, porque o tinytuya não é thread-safe.
 - **Ar-condicionado**:
   - As capabilities vêm de `GET /devices/{id}`, descontando as listadas em `custom.disabledCapabilities`.
