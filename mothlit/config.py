@@ -5,8 +5,12 @@ em %APPDATA%\\Mothlit\\.env, que é onde o `setup` grava.
 """
 
 import json
+import logging
 import os
+import sys
+import threading
 from dataclasses import dataclass
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import keyring
@@ -71,6 +75,31 @@ def salvar_env(valores: dict[str, str]) -> Path:
                 atuais[chave.strip()] = valor.strip()
     atuais.update(valores)
     caminho.write_text("".join(f"{k}={v}\n" for k, v in atuais.items()), encoding="utf-8")
+    return caminho
+
+
+# --- log em arquivo (o .exe não tem console) ---
+
+
+def configurar_log() -> Path:
+    """Log em %APPDATA%\\Mothlit\\mothlit.log, com rotação (até ~3 MB). Erros não tratados também vão para lá."""
+    caminho = pasta_config() / "mothlit.log"
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    arquivo = RotatingFileHandler(caminho, maxBytes=1_000_000, backupCount=2, encoding="utf-8")
+    arquivo.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(threadName)s] %(name)s: %(message)s"))
+    raiz = logging.getLogger()
+    raiz.handlers[:] = [arquivo]
+    raiz.setLevel(logging.INFO)
+    # bibliotecas falantes (o tinytuya em DEBUG chega a registrar chaves de sessão)
+    for nome in ("httpx", "httpcore", "tinytuya", "urllib3", "pywebview", "PIL"):
+        logging.getLogger(nome).setLevel(logging.WARNING)
+
+    def registrar(tipo, valor, rastro, thread=None):
+        logging.getLogger("mothlit").critical("Erro não tratado%s", f" na thread {thread}" if thread else "",
+                                              exc_info=(tipo, valor, rastro))
+
+    sys.excepthook = registrar
+    threading.excepthook = lambda a: registrar(a.exc_type, a.exc_value, a.exc_traceback, a.thread.name)
     return caminho
 
 

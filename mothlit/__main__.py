@@ -96,6 +96,7 @@ def main() -> int:
         else:
             from .ui.app import executar
 
+            config.configurar_log()
             executar(na_bandeja=args.bandeja)
     except (ErroDispositivo, config.ErroConfiguracao) as e:
         print(f"Erro: {e}", file=sys.stderr)

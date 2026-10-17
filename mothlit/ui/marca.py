@@ -56,15 +56,19 @@ def imagem(tamanho: int, cor: str = "#f4f4f5") -> Image.Image:
     return img.resize((tamanho, tamanho), Image.LANCZOS)
 
 
+def gerar_ico(destino: Path) -> Path:
+    """Mariposa clara sobre um quadrado escuro arredondado, em todos os tamanhos que o Windows usa."""
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    base = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
+    ImageDraw.Draw(base).rounded_rectangle((0, 0, 255, 255), 56, fill="#09090b")
+    base.alpha_composite(imagem(200), (28, 28))
+    base.save(destino, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    return destino
+
+
 def arquivo_ico() -> Path:
-    """Gera (uma vez) o .ico usado na barra de tarefas e na bandeja."""
+    """O .ico da janela/bandeja, gerado uma vez em %APPDATA%\\Mothlit (e de novo se o SVG mudar)."""
     caminho = config.pasta_config() / "mothlit.ico"
     if not caminho.exists() or caminho.stat().st_mtime < SVG.stat().st_mtime:
-        caminho.parent.mkdir(parents=True, exist_ok=True)
-        base = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
-        fundo = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
-        ImageDraw.Draw(fundo).rounded_rectangle((0, 0, 255, 255), 56, fill="#09090b")
-        base.alpha_composite(fundo)
-        base.alpha_composite(imagem(200), (28, 28))
-        base.save(caminho, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+        gerar_ico(caminho)
     return caminho

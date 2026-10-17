@@ -91,6 +91,32 @@ uv run python -m mothlit test-ar        # mostra capabilities e estado; comandos
 
 - **Iniciar com o Windows**: grava `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (só o seu usuário, sem admin). O Mothlit abre escondido na bandeja (`--bandeja`), sem console.
 - **Minimizar na bandeja ao fechar**: o × e o Alt+F4 escondem o app; para encerrar, use **Sair** no menu da bandeja. Fica salvo em `%APPDATA%\Mothlit\preferencias.json`.
+## Executável (Windows)
+
+```powershell
+uv run pyinstaller empacotamento/mothlit.spec --noconfirm        # gera dist\Mothlit\
+powershell -ExecutionPolicy Bypass -File empacotamento\instalar.ps1
+```
+
+O build gera uma pasta (`onedir`) com dois executáveis que compartilham as dependências:
+
+| Arquivo | Para quê |
+|---|---|
+| `Mothlit.exe` | Interface e bandeja, sem console. É ele que inicia com o Windows. |
+| `mothlit-cli.exe` | Linha de comando: `mothlit-cli setup`, `test-lampada`, `test-ar`. |
+
+Usei pasta em vez de arquivo único porque o `onefile` se descompacta numa pasta temporária a cada abertura: inicia mais devagar (ruim para "Iniciar com o Windows") e costuma gerar falso positivo de antivírus.
+
+O `instalar.ps1` (sem administrador):
+- copia para `%LOCALAPPDATA%\Programs\Mothlit` e cria o atalho **Mothlit** no Menu Iniciar;
+- fecha o Mothlit instalado se ele estiver aberto;
+- se "Iniciar com o Windows" estiver ligado, aponta o registro para o novo `Mothlit.exe`.
+
+Configuração (`%APPDATA%\Mothlit`) e segredos (keyring) ficam fora da pasta do app, então reinstalar ou atualizar não perde nada. Para atualizar, gere o build de novo e rode o `instalar.ps1`.
+
+O executável grava um log em `%APPDATA%\Mothlit\mothlit.log` (com rotação, até ~3 MB): é onde olhar se algo der errado, já que não há console.
+
+Requisito: WebView2 Runtime, que já vem no Windows 11.
 ## Estrutura
 
 ```
@@ -111,6 +137,7 @@ mothlit/
     app.py               janela pywebview (sem moldura) + Api: a ponte que o JavaScript chama
     marca.py             gera o .ico da mariposa a partir de web/moth.svg
     web/                 interface em HTML/CSS/JS (index.html, estilo.css, app.js, moth.svg)
+empacotamento/            mothlit.spec (PyInstaller), mothlit_app.py (entrada do .exe), instalar.ps1
 tests/                   pytest com mocks (tinytuya mockado, httpx.MockTransport)
 ```
 

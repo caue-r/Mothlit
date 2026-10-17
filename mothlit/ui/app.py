@@ -349,7 +349,15 @@ def executar(na_bandeja: bool = False) -> None:
     if _ja_aberto(trazer_janela=not na_bandeja):
         return
     debug = bool(os.environ.get("MOTHLIT_DEBUG"))
+    import keyring
+
+    from .. import __version__
+
+    log.info("Mothlit %s iniciando (executável: %s, bandeja: %s, keyring: %s)", __version__,
+             getattr(sys, "frozen", False), na_bandeja, type(keyring.get_keyring()).__name__)
     api = Api.da_configuracao()
+    log.info("Lâmpada: %s | Ar: %s (%s)", "ok" if api._lampada else api._erro_lampada,
+             "ok" if api._ar else api._erro_ar, getattr(criar_auth_smartthings(), "tipo", None))
     janela = webview.create_window(
         TITULO, url=str(WEB / "index.html"), js_api=api, width=LARGURA, height=ALTURA,
         resizable=False, frameless=True, easy_drag=False, background_color=FUNDO, hidden=na_bandeja,
@@ -384,6 +392,7 @@ def executar(na_bandeja: bool = False) -> None:
     janela.events.closing += ao_fechar
     _atender_pedidos_de_mostrar(mostrar)
     janela.events.shown += lambda: _cantos_arredondados(janela)
+    janela.events.loaded += lambda: log.info("Interface carregada")
     janela.events.restored += lambda: janela.evaluate_js("window.aoRestaurar && aoRestaurar()")
     janela.events.closed += bandeja.parar
     bandeja.iniciar()
