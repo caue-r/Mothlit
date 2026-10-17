@@ -14,6 +14,20 @@ def test_imagem_tem_conteudo_e_tamanho_certo():
     assert img.getbbox() is not None
 
 
+def test_bandeja_ocupa_a_largura_inteira():
+    for tamanho in (16, 24, 32):
+        esquerda, _, direita, _ = marca.imagem_bandeja(tamanho).getbbox()
+        assert (esquerda, direita) == (0, tamanho)  # encostada nas bordas: o máximo que cabe
+
+
+def test_ico_da_bandeja_tem_todos_os_tamanhos(tmp_path, monkeypatch):
+    from PIL import Image
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    ico = Image.open(marca.ico_bandeja())
+    assert sorted(ico.info["sizes"]) == [(t, t) for t in marca.TAMANHOS_BANDEJA]
+
+
 def test_ico_gerado_na_pasta_de_config(tmp_path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path))
     caminho = marca.arquivo_ico()

@@ -289,6 +289,7 @@ def _cantos_arredondados(janela) -> None:
 TITULO = "Mothlit"
 _MUTEX = "Local\\Mothlit.InstanciaUnica"
 _EVENTO_MOSTRAR = "Local\\Mothlit.Mostrar"
+_EVENTO_SAIR = "Local\\Mothlit.Sair"  # o instalador pede para o app sair antes de atualizar
 _handles = []  # mutex e evento vivem enquanto o processo existir
 
 
@@ -323,24 +324,23 @@ def _ja_aberto(trazer_janela: bool = True) -> bool:
     return True
 
 
-def _atender_pedidos_de_mostrar(mostrar: Callable[[], None]) -> None:
-    """Thread que espera outra instância pedir para a janela aparecer."""
+def _atender_evento(nome: str, acao: Callable[[], None], descricao: str) -> None:
+    """Thread que espera um evento nomeado do Windows (outra instância, ou o instalador) e executa `acao`."""
     if sys.platform != "win32":
         return
     k = _kernel32()
-    evento = k.CreateEventW(None, False, False, _EVENTO_MOSTRAR)  # auto-reset
+    evento = k.CreateEventW(None, False, False, nome)  # auto-reset
     _handles.append(evento)
 
     def esperar():
         while k.WaitForSingleObject(evento, 0xFFFFFFFF) == 0:  # INFINITE / WAIT_OBJECT_0
-            log.info("Outra instância pediu para mostrar a janela")
+            log.info("Pedido recebido: %s", descricao)
             try:
-                mostrar()
-                log.info("Janela mostrada")
+                acao()
             except Exception:
-                log.exception("Falha ao mostrar a janela")
+                log.exception("Falha ao atender o pedido: %s", descricao)
 
-    threading.Thread(target=esperar, name="instancia-unica", daemon=True).start()
+    threading.Thread(target=esperar, name=f"evento-{descricao}", daemon=True).start()
 
 def executar(na_bandeja: bool = False) -> None:
     """Abre a janela. `na_bandeja`: começa escondida (usado ao iniciar com o Windows)."""
@@ -390,7 +390,8 @@ def executar(na_bandeja: bool = False) -> None:
     api._ao_mudar = bandeja.atualizar_menu
 
     janela.events.closing += ao_fechar
-    _atender_pedidos_de_mostrar(mostrar)
+    _atender_evento(_EVENTO_MOSTRAR, mostrar, "mostrar a janela")
+    _atender_evento(_EVENTO_SAIR, api.sair, "sair para atualizar")
     janela.events.shown += lambda: _cantos_arredondados(janela)
     janela.events.loaded += lambda: log.info("Interface carregada")
     janela.events.restored += lambda: janela.evaluate_js("window.aoRestaurar && aoRestaurar()")

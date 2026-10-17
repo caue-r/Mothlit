@@ -40,10 +40,18 @@ if (-not $origem -or -not (Test-Path (Join-Path $origem "Mothlit.exe"))) {
 # O Mothlit aberto trava os arquivos: fecha só os que estão rodando a partir do destino.
 $abertos = Get-Process -Name "Mothlit", "mothlit-cli" -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -and $_.Path.StartsWith($Destino, [StringComparison]::OrdinalIgnoreCase) }
+$reabrir = [bool]($abertos | Where-Object { $_.ProcessName -eq "Mothlit" })
 if ($abertos) {
     Write-Host "Fechando o Mothlit em execução..."
-    $abertos | Stop-Process -Force
-    Start-Sleep -Seconds 1
+    # Pede para sair direito (o ícone some da bandeja); só força se não fechar a tempo.
+    try {
+        $sair = [System.Threading.EventWaitHandle]::OpenExisting("Local\Mothlit.Sair")
+        [void]$sair.Set()
+        $sair.Dispose()
+    } catch { }
+    $abertos | Wait-Process -Timeout 8 -ErrorAction SilentlyContinue
+    $abertos | Where-Object { -not $_.HasExited } | Stop-Process -Force
+    Start-Sleep -Milliseconds 500
 }
 
 Write-Host "Copiando para $Destino ..."
@@ -71,5 +79,9 @@ if (Get-ItemProperty -Path $run -Name "Mothlit" -ErrorAction SilentlyContinue) {
 }
 
 Write-Host "`nPronto! Mothlit instalado em $exe" -ForegroundColor Green
+if ($reabrir) {
+    Start-Process -FilePath $exe -ArgumentList "--bandeja" -WorkingDirectory $Destino
+    Write-Host "O Mothlit estava aberto: reabri na bandeja com a versão nova."
+}
 if (-not $SemAtalho) { Write-Host "Abra pelo Menu Iniciar: Mothlit" }
 Pausar

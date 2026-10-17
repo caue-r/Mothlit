@@ -4,7 +4,9 @@ O pystray roda numa thread própria (seguro no Windows). As ações que usam a r
 rodam em outra thread, para o menu da bandeja nunca travar.
 """
 
+import ctypes
 import logging
+import sys
 import threading
 from typing import Callable
 
@@ -15,6 +17,36 @@ from .ui import marca
 log = logging.getLogger(__name__)
 
 
+class _IconeNitido(pystray.Icon):
+    """pystray.Icon que entrega ao Windows o ícone no tamanho exato da bandeja.
+
+    O pystray carrega o ícone no tamanho padrão (32 px) e o Windows reduz para a bandeja
+    (16 px a 100%), o que deixa a mariposa menor e borrada. Aqui carregamos do nosso .ico
+    multi-tamanho o quadro do tamanho certo (SM_CXSMICON, que já considera o zoom da tela).
+    Se algo falhar, cai no comportamento normal do pystray.
+    """
+
+    def __init__(self, *args, ico=None, **kwargs):
+        self._ico = ico
+        super().__init__(*args, **kwargs)
+
+    def _assert_icon_handle(self):
+        if self._icon_handle:
+            return
+        if self._ico and sys.platform == "win32":
+            try:
+                from pystray._util import win32
+
+                lado = ctypes.windll.user32.GetSystemMetrics(49)  # SM_CXSMICON
+                handle = win32.LoadImage(None, str(self._ico), win32.IMAGE_ICON, lado, lado, win32.LR_LOADFROMFILE)
+                if handle:
+                    self._icon_handle = handle
+                    return
+            except Exception:
+                log.debug("Ícone nítido indisponível; usando o padrão do pystray", exc_info=True)
+        super()._assert_icon_handle()
+
+
 class Bandeja:
     def __init__(self, api, ao_abrir: Callable[[], None], ao_sair: Callable[[], None],
                  ao_alterar: Callable[[], None] | None = None):
@@ -23,10 +55,11 @@ class Bandeja:
         self._ao_abrir = ao_abrir
         self._ao_sair = ao_sair
         self._ao_alterar = ao_alterar
-        self._icone = pystray.Icon(
+        self._icone = _IconeNitido(
             "mothlit",
-            marca.imagem(64),
+            marca.imagem_bandeja(64),
             "Mothlit",
+            ico=marca.ico_bandeja(),
             menu=pystray.Menu(
                 pystray.MenuItem("Abrir Mothlit", self._abrir, default=True),
                 pystray.Menu.SEPARATOR,
