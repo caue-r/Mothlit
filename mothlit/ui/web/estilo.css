@@ -106,13 +106,19 @@ svg.icone { width: 1em; height: 1em; display: block; fill: none; stroke: current
 /* ---------- páginas: deslizam e fazem fade ---------- */
 
 .paginas { position: relative; flex: 1; }
+/* Páginas ficam empilhadas. A inativa some de verdade (visibility) só depois do fade;
+   a ativa HERDA do pai, para uma subpágina "ativa" dentro de uma página escondida
+   continuar escondida e não roubar cliques da página visível. */
 .pagina, .subpagina {
   position: absolute; inset: 0;
-  opacity: 0; pointer-events: none;
+  opacity: 0; pointer-events: none; visibility: hidden;
   transform: translateX(var(--saida, 18px));
-  transition: opacity var(--medio) var(--suave), transform 380ms var(--suave);
+  transition: opacity var(--medio) var(--suave), transform 380ms var(--suave), visibility 0s linear 380ms;
 }
-.pagina.ativa, .subpagina.ativa { opacity: 1; pointer-events: auto; transform: none; }
+.pagina.ativa, .subpagina.ativa {
+  opacity: 1; pointer-events: inherit; visibility: inherit; transform: none;
+  transition-delay: 0s;
+}
 .pagina.antes, .subpagina.antes { --saida: -18px; }
 .subpaginas { position: relative; height: 210px; }
 
