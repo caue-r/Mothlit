@@ -1,0 +1,16 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# PyInstaller
+build/
+dist/
+
+# Configuração local e arquivos gerados pelo tinytuya (contêm local_key!)
+.env
+devices.json
+tinytuya.json
+tuya-raw.json
+snapshot.json

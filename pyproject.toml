@@ -1,0 +1,23 @@
+[project]
+name = "mothlit"
+version = "0.1.0"
+description = "Controle da lâmpada Tuya e do ar-condicionado Samsung pelo PC"
+requires-python = ">=3.12"
+dependencies = [
+    "customtkinter>=6.0.0",
+    "httpx>=0.28.1",
+    "keyring>=25.7.0",
+    "pillow>=13.0.0",
+    "pystray>=0.19.5",
+    "python-dotenv>=1.2.4",
+    "tinytuya>=1.20.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
