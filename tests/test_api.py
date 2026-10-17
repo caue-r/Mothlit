@@ -107,6 +107,55 @@ def test_mudanca_de_estado_avisa_a_bandeja():
     assert avisos == [True, False]
 
 
+def test_fechar_respeita_preferencia(monkeypatch):
+    from mothlit import config
+
+    api = Api()
+    api._janela = MagicMock()
+    monkeypatch.setattr(config, "ler_preferencias", lambda: {"fechar_para_bandeja": True})
+    assert api.fechar()["dados"] == "bandeja"
+    api._janela.hide.assert_called_once()
+    api._janela.destroy.assert_not_called()
+
+    monkeypatch.setattr(config, "ler_preferencias", lambda: {"fechar_para_bandeja": False})
+    assert api.fechar()["dados"] == "saiu"
+    api._janela.destroy.assert_called_once()
+
+
+def test_sair_ignora_preferencia():
+    api = Api()
+    api._janela = MagicMock()
+    api.sair()
+    assert api._saindo is True
+    api._janela.destroy.assert_called_once()
+
+
+def test_definir_preferencias(monkeypatch):
+    from mothlit import config, inicializacao
+
+    estado = {"registro": False, "bandeja": False}
+    monkeypatch.setattr(inicializacao, "ativo", lambda: estado["registro"])
+    monkeypatch.setattr(inicializacao, "suportado", lambda: True)
+    monkeypatch.setattr(inicializacao, "definir", lambda v: estado.__setitem__("registro", v))
+    monkeypatch.setattr(config, "ler_preferencias", lambda: {"fechar_para_bandeja": estado["bandeja"]})
+    monkeypatch.setattr(config, "salvar_preferencia", lambda n, v: estado.__setitem__("bandeja", v))
+    api = Api()
+    assert api.definir_preferencia("iniciarComSistema", True)["dados"]["iniciarComSistema"] is True
+    assert api.definir_preferencia("fecharParaBandeja", True)["dados"]["fecharParaBandeja"] is True
+    assert api.definir_preferencia("outra", True)["ok"] is False
+
+
+def test_erro_ao_gravar_registro_vira_mensagem(monkeypatch):
+    from mothlit import inicializacao
+
+    def falha(_):
+        raise PermissionError("acesso negado")
+
+    monkeypatch.setattr(inicializacao, "definir", falha)
+    r = Api().definir_preferencia("iniciarComSistema", True)
+    assert r["ok"] is False and "acesso negado" in r["erro"]
+
+
 def test_aparelho_nao_configurado():
     r = Api(erro_ar="Ar-condicionado não configurado.").estado_ar()
     assert r == {"ok": False, "configurado": False, "erro": "Ar-condicionado não configurado."}

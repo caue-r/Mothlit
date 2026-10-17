@@ -8,14 +8,16 @@ separada, então a rede nunca trava a interface. Toda resposta é um dict simple
 
 import ctypes
 import logging
+import threading
 import os
 import sys
+from ctypes import wintypes
 from pathlib import Path
 from typing import Any, Callable
 
 import webview
 
-from .. import config
+from .. import config, inicializacao
 from ..config import ErroConfiguracao
 from ..devices import ArCondicionado, ErroDispositivo, EstadoAr, EstadoLampada, Lampada, criar_ar, criar_lampada
 from . import marca
@@ -75,6 +77,7 @@ class Api:
         self._janela = None
         # último liga/desliga conhecido de cada aparelho (usado no menu da bandeja)
         self._ligado: dict[str, bool | None] = {"ar": None, "luz": None}
+        self._saindo = False
         self._ao_mudar: Callable[[], None] | None = None
 
     @classmethod
@@ -164,8 +167,38 @@ class Api:
             self._janela.hide()
 
     def fechar(self):
+        """Botão ×: vai para a bandeja ou encerra, conforme a preferência."""
+        if config.ler_preferencias()["fechar_para_bandeja"]:
+            self.minimizar()
+            return {"ok": True, "dados": "bandeja"}
+        self.sair()
+        return {"ok": True, "dados": "saiu"}
+
+    def sair(self):
+        """Encerra de verdade (menu da bandeja), ignorando a preferência de fechar para a bandeja."""
+        self._saindo = True
         if self._janela:
             self._janela.destroy()
+
+    def preferencias(self):
+        prefs = config.ler_preferencias()
+        return {"ok": True, "dados": {
+            "iniciarComSistema": inicializacao.ativo(),
+            "iniciarSuportado": inicializacao.suportado(),
+            "fecharParaBandeja": bool(prefs["fechar_para_bandeja"]),
+        }}
+
+    def definir_preferencia(self, nome: str, valor: bool):
+        try:
+            if nome == "iniciarComSistema":
+                inicializacao.definir(bool(valor))
+            elif nome == "fecharParaBandeja":
+                config.salvar_preferencia("fechar_para_bandeja", bool(valor))
+            else:
+                return {"ok": False, "erro": f"Preferência desconhecida: {nome}"}
+        except OSError as e:
+            return {"ok": False, "erro": f"Não consegui salvar a preferência: {e}"}
+        return self.preferencias()
 
     # --- internos ---
 
@@ -218,54 +251,102 @@ def _cantos_arredondados(janela) -> None:
 
 
 TITULO = "Mothlit"
-_mutex = None
+_MUTEX = "Local\\Mothlit.InstanciaUnica"
+_EVENTO_MOSTRAR = "Local\\Mothlit.Mostrar"
+_handles = []  # mutex e evento vivem enquanto o processo existir
 
 
-def _ja_aberto() -> bool:
-    """Instância única: se o Mothlit já estiver rodando (talvez escondido na bandeja), traz a janela dele."""
+def _kernel32():
+    k = ctypes.windll.kernel32
+    for funcao in (k.CreateMutexW, k.CreateEventW, k.OpenEventW):
+        funcao.restype = wintypes.HANDLE
+    k.SetEvent.argtypes = [wintypes.HANDLE]
+    k.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    k.CloseHandle.argtypes = [wintypes.HANDLE]
+    return k
+
+
+def _ja_aberto(trazer_janela: bool = True) -> bool:
+    """Instância única. Se o Mothlit já estiver rodando, pede para ele aparecer e devolve True.
+
+    O pedido vai por um evento nomeado do Windows (não por FindWindow), porque a janela
+    de quem iniciou escondido na bandeja ainda nem existe para o sistema.
+    """
     if sys.platform != "win32":
         return False
-    kernel32, user32 = ctypes.windll.kernel32, ctypes.windll.user32
-    # o mutex vive enquanto o processo existir; guardamos a referência no módulo
-    global _mutex
-    _mutex = kernel32.CreateMutexW(None, False, "Local\\Mothlit.InstanciaUnica")
-    if kernel32.GetLastError() != 183:  # ERROR_ALREADY_EXISTS
+    k = _kernel32()
+    _handles.append(k.CreateMutexW(None, False, _MUTEX))
+    if k.GetLastError() != 183:  # ERROR_ALREADY_EXISTS
         return False
-    hwnd = user32.FindWindowW(None, TITULO)
-    if hwnd:
-        user32.ShowWindow(hwnd, 5)  # SW_SHOW (a janela pode estar escondida na bandeja)
-        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-        user32.SetForegroundWindow(hwnd)
+    if trazer_janela:
+        ctypes.windll.user32.AllowSetForegroundWindow(-1)  # ASFW_ANY: deixa a outra instância vir para a frente
+        evento = k.OpenEventW(0x0002, False, _EVENTO_MOSTRAR)  # EVENT_MODIFY_STATE
+        if evento:
+            k.SetEvent(evento)
+            k.CloseHandle(evento)
     return True
 
 
-def executar() -> None:
+def _atender_pedidos_de_mostrar(mostrar: Callable[[], None]) -> None:
+    """Thread que espera outra instância pedir para a janela aparecer."""
+    if sys.platform != "win32":
+        return
+    k = _kernel32()
+    evento = k.CreateEventW(None, False, False, _EVENTO_MOSTRAR)  # auto-reset
+    _handles.append(evento)
+
+    def esperar():
+        while k.WaitForSingleObject(evento, 0xFFFFFFFF) == 0:  # INFINITE / WAIT_OBJECT_0
+            log.info("Outra instância pediu para mostrar a janela")
+            try:
+                mostrar()
+                log.info("Janela mostrada")
+            except Exception:
+                log.exception("Falha ao mostrar a janela")
+
+    threading.Thread(target=esperar, name="instancia-unica", daemon=True).start()
+
+def executar(na_bandeja: bool = False) -> None:
+    """Abre a janela. `na_bandeja`: começa escondida (usado ao iniciar com o Windows)."""
     from ..tray import Bandeja
 
-    if _ja_aberto():
+    if _ja_aberto(trazer_janela=not na_bandeja):
         return
     debug = bool(os.environ.get("MOTHLIT_DEBUG"))
     api = Api.da_configuracao()
     janela = webview.create_window(
         TITULO, url=str(WEB / "index.html"), js_api=api, width=LARGURA, height=ALTURA,
-        resizable=False, frameless=True, easy_drag=False, background_color=FUNDO,
+        resizable=False, frameless=True, easy_drag=False, background_color=FUNDO, hidden=na_bandeja,
     )
     api._janela = janela
 
     def mostrar() -> None:
-        # prepara o fade-in antes de a janela reaparecer
-        janela.evaluate_js("window.aoRestaurar && aoRestaurar()")
         janela.show()
         janela.restore()
+        _cantos_arredondados(janela)
+        try:
+            ctypes.windll.user32.SetForegroundWindow(janela.native.Handle.ToInt32())
+        except Exception:
+            pass
+        janela.evaluate_js("window.aoRestaurar && aoRestaurar()")  # fade-in e dados frescos
+
+    def ao_fechar():
+        # Alt+F4 também respeita "minimizar na bandeja ao fechar"; "Sair" na bandeja não.
+        if not api._saindo and config.ler_preferencias()["fechar_para_bandeja"]:
+            janela.hide()
+            return False
+        return True
 
     bandeja = Bandeja(
         api,
         ao_abrir=mostrar,
-        ao_sair=janela.destroy,
+        ao_sair=api.sair,
         ao_alterar=lambda: janela.evaluate_js("window.atualizarTudo && atualizarTudo()"),
     )
     api._ao_mudar = bandeja.atualizar_menu
 
+    janela.events.closing += ao_fechar
+    _atender_pedidos_de_mostrar(mostrar)
     janela.events.shown += lambda: _cantos_arredondados(janela)
     janela.events.restored += lambda: janela.evaluate_js("window.aoRestaurar && aoRestaurar()")
     janela.events.closed += bandeja.parar

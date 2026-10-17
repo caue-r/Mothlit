@@ -171,6 +171,23 @@
         <h3>Configurações</h3>
         <button class="botao-icone" id="folha-fechar" data-icone="fechar" title="Fechar"></button>
       </div>
+      <div class="opcoes">
+        <div class="opcao">
+          <div>
+            <strong>Iniciar com o Windows</strong>
+            <small>Abre escondido na bandeja ao entrar no Windows</small>
+          </div>
+          <button class="chave" id="pref-iniciar" role="switch" aria-checked="false" data-pref="iniciarComSistema"><span></span></button>
+        </div>
+        <div class="opcao">
+          <div>
+            <strong>Minimizar na bandeja ao fechar</strong>
+            <small>O × esconde o app; para sair, use o menu da bandeja</small>
+          </div>
+          <button class="chave" id="pref-bandeja" role="switch" aria-checked="false" data-pref="fecharParaBandeja"><span></span></button>
+        </div>
+      </div>
+      <h4 class="folha-secao">Aparelhos</h4>
       <dl id="folha-dados"></dl>
       <p class="folha-dica">Para reconfigurar: <code>uv run python -m mothlit setup</code></p>
     </div>

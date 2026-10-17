@@ -534,9 +534,9 @@ function sair(depois) {
 
 // Chamado pelo Python quando a janela volta (bandeja ou barra de tarefas): fade-in e dados frescos.
 window.aoRestaurar = () => {
-  app.classList.remove("visivel", "saindo");
-  void app.offsetWidth;  // força o navegador a aplicar o estado inicial antes de animar
-  setTimeout(() => app.classList.add("visivel"), 30);
+  app.classList.remove("saindo");
+  // se saiu pelo – ou ×, está transparente: faz o fade-in; se já está visível, não pisca
+  if (!app.classList.contains("visivel")) setTimeout(() => app.classList.add("visivel"), 30);
   atualizarTudo();
 };
 
@@ -551,17 +551,52 @@ async function abrirConfiguracoes() {
       ["Segredos", "Gerenciador de Credenciais do Windows (mothlit)"],
     ].map(([t, v]) => `<dt>${t}</dt><dd>${v}</dd>`).join("");
   }
+  await carregarPreferencias();
   $("#folha-fundo").classList.add("aberta");
+}
+
+// ---------------------------------------------------------------- preferências
+
+function aplicarPreferencias(p) {
+  $("#pref-iniciar").setAttribute("aria-checked", String(p.iniciarComSistema));
+  $("#pref-iniciar").disabled = !p.iniciarSuportado;
+  $("#pref-bandeja").setAttribute("aria-checked", String(p.fecharParaBandeja));
+  $("#btn-fechar").title = p.fecharParaBandeja ? "Fechar (fica na bandeja)" : "Fechar";
+}
+
+async function carregarPreferencias() {
+  const r = await chamar("preferencias");
+  if (r.ok) aplicarPreferencias(r.dados);
+}
+
+function iniciarPreferencias() {
+  $$(".chave").forEach(chave => chave.addEventListener("click", async () => {
+    const novo = chave.getAttribute("aria-checked") !== "true";
+    chave.setAttribute("aria-checked", String(novo));  // resposta imediata; o Python confirma
+    chave.classList.add("salvando");
+    const r = await chamar("definir_preferencia", chave.dataset.pref, novo);
+    chave.classList.remove("salvando");
+    if (r.ok) {
+      aplicarPreferencias(r.dados);
+      status("Preferência salva");
+    } else {
+      chave.setAttribute("aria-checked", String(!novo));
+      status(r.erro || "Não consegui salvar a preferência.", "erro");
+    }
+  }));
+  carregarPreferencias();
 }
 
 function iniciarJanela() {
   // vai para a bandeja; depois de escondida, a interface volta ao normal (invisível ao usuário)
   $("#btn-min").addEventListener("click", () => sair(async () => {
     await chamar("minimizar");
-    app.classList.remove("saindo");
-    app.classList.add("visivel");
+    app.classList.remove("saindo");  // fica transparente até aoRestaurar() fazer o fade-in
   }));
-  $("#btn-fechar").addEventListener("click", () => sair(() => chamar("fechar")));
+  $("#btn-fechar").addEventListener("click", () => sair(async () => {
+    const r = await chamar("fechar");
+    if (r && r.dados === "bandeja") app.classList.remove("saindo");  // idem ao –
+  }));
   $("#btn-atualizar").addEventListener("click", () => { status("Atualizando…", "sutil"); atualizarTudo(); });
   $("#btn-config").addEventListener("click", abrirConfiguracoes);
   $("#folha-fechar").addEventListener("click", () => $("#folha-fundo").classList.remove("aberta"));
@@ -584,6 +619,7 @@ document.addEventListener("DOMContentLoaded", () => {
   iniciarJanela();
   iniciarAr();
   iniciarLuz();
+  iniciarPreferencias();
   requestAnimationFrame(() => app.classList.add("visivel"));
   status("Conectando…", "sutil");
   atualizarTudo();

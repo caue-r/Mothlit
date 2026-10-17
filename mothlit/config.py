@@ -4,6 +4,7 @@ O .env é procurado primeiro na pasta atual (útil no desenvolvimento) e depois
 em %APPDATA%\\Mothlit\\.env, que é onde o `setup` grava.
 """
 
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -70,6 +71,34 @@ def salvar_env(valores: dict[str, str]) -> Path:
     atuais.update(valores)
     caminho.write_text("".join(f"{k}={v}\n" for k, v in atuais.items()), encoding="utf-8")
     return caminho
+
+
+# --- preferências do app (não sensíveis) ---
+
+PREFERENCIAS_PADRAO = {"fechar_para_bandeja": False}
+
+
+def caminho_preferencias() -> Path:
+    return pasta_config() / "preferencias.json"
+
+
+def ler_preferencias() -> dict:
+    """Preferências salvas, completadas com os padrões. Arquivo ausente ou corrompido = padrões."""
+    try:
+        salvas = json.loads(caminho_preferencias().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        salvas = {}
+    return {**PREFERENCIAS_PADRAO, **{k: v for k, v in salvas.items() if k in PREFERENCIAS_PADRAO}}
+
+
+def salvar_preferencia(nome: str, valor) -> dict:
+    if nome not in PREFERENCIAS_PADRAO:
+        raise ErroConfiguracao(f"Preferência desconhecida: {nome}")
+    preferencias = {**ler_preferencias(), nome: valor}
+    caminho = caminho_preferencias()
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_text(json.dumps(preferencias, indent=2), encoding="utf-8")
+    return preferencias
 
 
 def ler_segredo(nome: str) -> str | None:

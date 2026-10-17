@@ -80,10 +80,15 @@ uv run python -m mothlit test-ar        # mostra capabilities e estado; comandos
 
 ### Bandeja do sistema
 
-- **–** (minimizar) esconde a janela na bandeja; **×** encerra o app.
+- **–** (minimizar) esconde a janela na bandeja; **×** encerra o app (ou vai para a bandeja, veja abaixo).
 - Clique no ícone da mariposa para reabrir. O menu tem **Ligar/Desligar luz**, **Ligar/Desligar ar** (o texto acompanha o estado atual) e **Sair**. Ações pela bandeja mostram uma notificação do Windows.
 - O estado dos dois aparelhos é relido a cada 30 s (e no botão ⟳ ou F5).
-- Só existe uma instância: abrir o Mothlit de novo traz a janela que já está rodando.
+- Só existe uma instância: abrir o Mothlit de novo traz a janela que já está rodando (inclusive se ele iniciou escondido).
+
+### Configurações (botão de ajustes)
+
+- **Iniciar com o Windows**: grava `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (só o seu usuário, sem admin). O Mothlit abre escondido na bandeja (`--bandeja`), sem console.
+- **Minimizar na bandeja ao fechar**: o × e o Alt+F4 escondem o app; para encerrar, use **Sair** no menu da bandeja. Fica salvo em `%APPDATA%\Mothlit\preferencias.json`.
 ## Estrutura
 
 ```
@@ -99,6 +104,7 @@ mothlit/
                          airConditionerMode, airConditionerFanMode, temperatureMeasurement,
                          fanOscillationMode, custom.airConditionerOptionalMode
   tray.py                ícone na bandeja (pystray) com ações rápidas
+  inicializacao.py       iniciar com o Windows (registro Run do usuário)
   ui/
     app.py               janela pywebview (sem moldura) + Api: a ponte que o JavaScript chama
     marca.py             gera o .ico da mariposa a partir de web/moth.svg

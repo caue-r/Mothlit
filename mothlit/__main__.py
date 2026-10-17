@@ -81,6 +81,7 @@ def test_ar() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(prog="mothlit", description="Controle da lâmpada e do ar-condicionado.")
     parser.add_argument("comando", nargs="?", choices=["setup", "test-lampada", "test-ar"])
+    parser.add_argument("--bandeja", action="store_true", help="abre escondido na bandeja (usado ao iniciar com o Windows)")
     args = parser.parse_args()
 
     try:
@@ -95,7 +96,7 @@ def main() -> int:
         else:
             from .ui.app import executar
 
-            executar()
+            executar(na_bandeja=args.bandeja)
     except (ErroDispositivo, config.ErroConfiguracao) as e:
         print(f"Erro: {e}", file=sys.stderr)
         return 1

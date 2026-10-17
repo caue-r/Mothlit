@@ -28,6 +28,23 @@ def test_segredos_vao_para_o_keyring(ambiente):
     assert config.ler_segredo(config.SEGREDO_LAMPADA_KEY) == "segredo"
 
 
+def test_preferencias_padrao_e_salvas(ambiente):
+    assert config.ler_preferencias() == {"fechar_para_bandeja": False}
+    config.salvar_preferencia("fechar_para_bandeja", True)
+    assert config.ler_preferencias() == {"fechar_para_bandeja": True}
+
+
+def test_preferencias_corrompidas_voltam_ao_padrao(ambiente):
+    config.caminho_preferencias().parent.mkdir(parents=True, exist_ok=True)
+    config.caminho_preferencias().write_text("{isso não é json", encoding="utf-8")
+    assert config.ler_preferencias() == {"fechar_para_bandeja": False}
+
+
+def test_preferencia_desconhecida(ambiente):
+    with pytest.raises(config.ErroConfiguracao):
+        config.salvar_preferencia("tema", "claro")
+
+
 def test_fabricas_exigem_setup(ambiente):
     with pytest.raises(config.ErroConfiguracao, match="setup"):
         criar_lampada()

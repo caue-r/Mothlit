@@ -13,6 +13,16 @@ dependencies = [
     "tinytuya>=1.20.0",
 ]
 
+[project.scripts]
+mothlit = "mothlit.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mothlit"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
