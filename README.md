@@ -98,6 +98,8 @@ uv run pyinstaller empacotamento/mothlit.spec --noconfirm        # gera dist\Mot
 powershell -ExecutionPolicy Bypass -File empacotamento\instalar.ps1
 ```
 
+Ou dê dois cliques em `empacotamento\instalar.cmd`: ele roda o instalador e espera um Enter no final para você ler o resultado (ou o erro).
+
 O build gera uma pasta (`onedir`) com dois executáveis que compartilham as dependências:
 
 | Arquivo | Para quê |
@@ -137,7 +139,7 @@ mothlit/
     app.py               janela pywebview (sem moldura) + Api: a ponte que o JavaScript chama
     marca.py             gera o .ico da mariposa a partir de web/moth.svg
     web/                 interface em HTML/CSS/JS (index.html, estilo.css, app.js, moth.svg)
-empacotamento/            mothlit.spec (PyInstaller), mothlit_app.py (entrada do .exe), instalar.ps1
+empacotamento/            mothlit.spec (PyInstaller), mothlit_app.py (entrada do .exe), instalar.ps1/.cmd
 tests/                   pytest com mocks (tinytuya mockado, httpx.MockTransport)
 ```
 

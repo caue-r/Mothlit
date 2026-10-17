@@ -18,6 +18,20 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Aberto com dois cliques (pai = Explorer ou o instalar.cmd), a janela fecharia antes de dar para ler.
+function Pausar {
+    $pai = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId
+    $nome = (Get-Process -Id $pai -ErrorAction SilentlyContinue).ProcessName
+    if ($nome -in @("explorer", "cmd")) { Read-Host "`nPressione Enter para fechar" | Out-Null }
+}
+
+trap {
+    Write-Host "`nErro: $($_.Exception.Message)" -ForegroundColor Red
+    Pausar
+    exit 1
+}
+
 $origem = Join-Path $PSScriptRoot "..\dist\Mothlit" | Resolve-Path -ErrorAction SilentlyContinue
 if (-not $origem -or -not (Test-Path (Join-Path $origem "Mothlit.exe"))) {
     throw "Não achei dist\Mothlit\Mothlit.exe. Rode antes: uv run pyinstaller empacotamento/mothlit.spec --noconfirm"
@@ -56,4 +70,6 @@ if (Get-ItemProperty -Path $run -Name "Mothlit" -ErrorAction SilentlyContinue) {
     Write-Host "Iniciar com o Windows: atualizado para o executável instalado."
 }
 
-Write-Host "Pronto: $exe"
+Write-Host "`nPronto! Mothlit instalado em $exe" -ForegroundColor Green
+if (-not $SemAtalho) { Write-Host "Abra pelo Menu Iniciar: Mothlit" }
+Pausar
