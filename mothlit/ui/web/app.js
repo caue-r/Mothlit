@@ -64,6 +64,7 @@ async function chamar(metodo, ...args) {
 
 const RELER_MS = { ar: 2500, luz: 800 };   // a SmartThings demora a refletir o comando
 const JANELA_INTERACAO_MS = 4000;           // não deixa uma leitura "desfazer" o que o usuário acabou de mexer
+const ATUALIZAR_A_CADA_MS = 30000;
 const estado = { ar: null, luz: null };
 const ultimaInteracao = { ar: 0, luz: 0 };
 
@@ -531,9 +532,12 @@ function sair(depois) {
   setTimeout(depois, 170);
 }
 
+// Chamado pelo Python quando a janela volta (bandeja ou barra de tarefas): fade-in e dados frescos.
 window.aoRestaurar = () => {
-  app.classList.remove("saindo");
-  requestAnimationFrame(() => app.classList.add("visivel"));
+  app.classList.remove("visivel", "saindo");
+  void app.offsetWidth;  // força o navegador a aplicar o estado inicial antes de animar
+  setTimeout(() => app.classList.add("visivel"), 30);
+  atualizarTudo();
 };
 
 async function abrirConfiguracoes() {
@@ -551,7 +555,12 @@ async function abrirConfiguracoes() {
 }
 
 function iniciarJanela() {
-  $("#btn-min").addEventListener("click", () => sair(() => chamar("minimizar")));
+  // vai para a bandeja; depois de escondida, a interface volta ao normal (invisível ao usuário)
+  $("#btn-min").addEventListener("click", () => sair(async () => {
+    await chamar("minimizar");
+    app.classList.remove("saindo");
+    app.classList.add("visivel");
+  }));
   $("#btn-fechar").addEventListener("click", () => sair(() => chamar("fechar")));
   $("#btn-atualizar").addEventListener("click", () => { status("Atualizando…", "sutil"); atualizarTudo(); });
   $("#btn-config").addEventListener("click", abrirConfiguracoes);
@@ -578,4 +587,5 @@ document.addEventListener("DOMContentLoaded", () => {
   requestAnimationFrame(() => app.classList.add("visivel"));
   status("Conectando…", "sutil");
   atualizarTudo();
+  setInterval(() => { if (ocupados === 0) atualizarTudo(); }, ATUALIZAR_A_CADA_MS);
 });

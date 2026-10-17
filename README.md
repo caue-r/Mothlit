@@ -78,6 +78,12 @@ uv run python -m mothlit test-lampada   # liga, muda brilho/temperatura/cor e re
 uv run python -m mothlit test-ar        # mostra capabilities e estado; comandos só se você confirmar
 ```
 
+### Bandeja do sistema
+
+- **–** (minimizar) esconde a janela na bandeja; **×** encerra o app.
+- Clique no ícone da mariposa para reabrir. O menu tem **Ligar/Desligar luz**, **Ligar/Desligar ar** (o texto acompanha o estado atual) e **Sair**. Ações pela bandeja mostram uma notificação do Windows.
+- O estado dos dois aparelhos é relido a cada 30 s (e no botão ⟳ ou F5).
+- Só existe uma instância: abrir o Mothlit de novo traz a janela que já está rodando.
 ## Estrutura
 
 ```
@@ -92,6 +98,7 @@ mothlit/
     ar_condicionado.py   capabilities switch, thermostatCoolingSetpoint,
                          airConditionerMode, airConditionerFanMode, temperatureMeasurement,
                          fanOscillationMode, custom.airConditionerOptionalMode
+  tray.py                ícone na bandeja (pystray) com ações rápidas
   ui/
     app.py               janela pywebview (sem moldura) + Api: a ponte que o JavaScript chama
     marca.py             gera o .ico da mariposa a partir de web/moth.svg

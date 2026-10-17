@@ -73,6 +73,9 @@ class Api:
         self._lampada, self._erro_lampada = lampada, erro_lampada
         self._ar, self._erro_ar = ar, erro_ar
         self._janela = None
+        # último liga/desliga conhecido de cada aparelho (usado no menu da bandeja)
+        self._ligado: dict[str, bool | None] = {"ar": None, "luz": None}
+        self._ao_mudar: Callable[[], None] | None = None
 
     @classmethod
     def da_configuracao(cls) -> "Api":
@@ -83,10 +86,20 @@ class Api:
     # --- ar-condicionado ---
 
     def estado_ar(self):
-        return self._usar_ar(lambda ar: _ar_dict(ar.estado()))
+        r = self._usar_ar(lambda ar: _ar_dict(ar.estado()))
+        if r["ok"]:
+            self._lembrar("ar", r["dados"]["ligado"])
+        return r
 
     def ar_ligar(self, ligar: bool):
-        return self._usar_ar(lambda ar: ar.ligar() if ligar else ar.desligar())
+        r = self._usar_ar(lambda ar: ar.ligar() if ligar else ar.desligar())
+        if r["ok"]:
+            self._lembrar("ar", bool(ligar))
+        return r
+
+    def alternar_ar(self):
+        """Lê o estado atual e inverte (usado pela bandeja)."""
+        return self._alternar("ar", self.estado_ar, self.ar_ligar)
 
     def ar_temperatura(self, valor: float):
         return self._usar_ar(lambda ar: ar.definir_temperatura(float(valor)))
@@ -106,10 +119,20 @@ class Api:
     # --- lâmpada ---
 
     def estado_luz(self):
-        return self._usar_luz(lambda luz: _luz_dict(luz.estado(), luz.nome))
+        r = self._usar_luz(lambda luz: _luz_dict(luz.estado(), luz.nome))
+        if r["ok"]:
+            self._lembrar("luz", r["dados"]["ligada"])
+        return r
 
     def luz_ligar(self, ligar: bool):
-        return self._usar_luz(lambda luz: luz.ligar() if ligar else luz.desligar())
+        r = self._usar_luz(lambda luz: luz.ligar() if ligar else luz.desligar())
+        if r["ok"]:
+            self._lembrar("luz", bool(ligar))
+        return r
+
+    def alternar_luz(self):
+        """Lê o estado atual e inverte (usado pela bandeja)."""
+        return self._alternar("luz", self.estado_luz, self.luz_ligar)
 
     def luz_brilho(self, porcentagem: int):
         return self._usar_luz(lambda luz: luz.definir_brilho(round(porcentagem)))
@@ -119,6 +142,10 @@ class Api:
 
     def luz_hsv(self, h: float, s: float, v: float):
         return self._usar_luz(lambda luz: luz.definir_hsv(h, s, v))
+
+    def ultimo_ligado(self, qual: str) -> bool | None:
+        """Último liga/desliga conhecido ("ar" ou "luz"), sem ir à rede."""
+        return self._ligado.get(qual)
 
     # --- janela e configuração ---
 
@@ -132,14 +159,31 @@ class Api:
         }}
 
     def minimizar(self):
+        """Vai para a bandeja: some da tela e da barra de tarefas."""
         if self._janela:
-            self._janela.minimize()
+            self._janela.hide()
 
     def fechar(self):
         if self._janela:
             self._janela.destroy()
 
     # --- internos ---
+
+    def _lembrar(self, qual: str, ligado: bool) -> None:
+        if self._ligado[qual] != ligado:
+            self._ligado[qual] = ligado
+            if self._ao_mudar:
+                self._ao_mudar()
+
+    @staticmethod
+    def _alternar(qual: str, ler, ligar):
+        atual = ler()
+        if not atual["ok"]:
+            return atual
+        chave = "ligado" if qual == "ar" else "ligada"
+        novo = not atual["dados"][chave]
+        r = ligar(novo)
+        return {**r, "dados": novo} if r["ok"] else r
 
     def _usar_ar(self, acao: Callable[[ArCondicionado], Any]):
         return self._executar(self._ar, self._erro_ar, acao)
@@ -173,14 +217,57 @@ def _cantos_arredondados(janela) -> None:
         log.debug("Não consegui arredondar os cantos", exc_info=True)
 
 
+TITULO = "Mothlit"
+_mutex = None
+
+
+def _ja_aberto() -> bool:
+    """Instância única: se o Mothlit já estiver rodando (talvez escondido na bandeja), traz a janela dele."""
+    if sys.platform != "win32":
+        return False
+    kernel32, user32 = ctypes.windll.kernel32, ctypes.windll.user32
+    # o mutex vive enquanto o processo existir; guardamos a referência no módulo
+    global _mutex
+    _mutex = kernel32.CreateMutexW(None, False, "Local\\Mothlit.InstanciaUnica")
+    if kernel32.GetLastError() != 183:  # ERROR_ALREADY_EXISTS
+        return False
+    hwnd = user32.FindWindowW(None, TITULO)
+    if hwnd:
+        user32.ShowWindow(hwnd, 5)  # SW_SHOW (a janela pode estar escondida na bandeja)
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+        user32.SetForegroundWindow(hwnd)
+    return True
+
+
 def executar() -> None:
+    from ..tray import Bandeja
+
+    if _ja_aberto():
+        return
     debug = bool(os.environ.get("MOTHLIT_DEBUG"))
     api = Api.da_configuracao()
     janela = webview.create_window(
-        "Mothlit", url=str(WEB / "index.html"), js_api=api, width=LARGURA, height=ALTURA,
+        TITULO, url=str(WEB / "index.html"), js_api=api, width=LARGURA, height=ALTURA,
         resizable=False, frameless=True, easy_drag=False, background_color=FUNDO,
     )
     api._janela = janela
+
+    def mostrar() -> None:
+        # prepara o fade-in antes de a janela reaparecer
+        janela.evaluate_js("window.aoRestaurar && aoRestaurar()")
+        janela.show()
+        janela.restore()
+
+    bandeja = Bandeja(
+        api,
+        ao_abrir=mostrar,
+        ao_sair=janela.destroy,
+        ao_alterar=lambda: janela.evaluate_js("window.atualizarTudo && atualizarTudo()"),
+    )
+    api._ao_mudar = bandeja.atualizar_menu
+
     janela.events.shown += lambda: _cantos_arredondados(janela)
     janela.events.restored += lambda: janela.evaluate_js("window.aoRestaurar && aoRestaurar()")
+    janela.events.closed += bandeja.parar
+    bandeja.iniciar()
     webview.start(debug=debug, icon=str(marca.arquivo_ico()))

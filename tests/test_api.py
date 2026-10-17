@@ -74,6 +74,39 @@ def test_erro_inesperado_nao_escapa():
     assert r["ok"] is False and r["erro"].startswith("Erro inesperado")
 
 
+def test_alternar_le_estado_e_inverte():
+    luz = MagicMock()
+    luz.nome = "Quarto"
+    luz.estado.return_value = estado_luz()  # ligada
+    api = Api(lampada=luz)
+    r = api.alternar_luz()
+    assert r["ok"] is True and r["dados"] is False
+    luz.desligar.assert_called_once()
+    assert api.ultimo_ligado("luz") is False
+
+
+def test_alternar_com_erro_nao_envia_comando():
+    ar = MagicMock()
+    ar.estado.side_effect = ErroDispositivo("Sem internet.")
+    r = Api(ar=ar).alternar_ar()
+    assert r == {"ok": False, "configurado": True, "erro": "Sem internet."}
+    ar.ligar.assert_not_called()
+    ar.desligar.assert_not_called()
+
+
+def test_mudanca_de_estado_avisa_a_bandeja():
+    ar = MagicMock()
+    ar.estado.return_value = estado_ar()  # ligado
+    api = Api(ar=ar)
+    avisos = []
+    api._ao_mudar = lambda: avisos.append(api.ultimo_ligado("ar"))
+    assert api.ultimo_ligado("ar") is None
+    api.estado_ar()
+    api.estado_ar()  # mesmo estado: não avisa de novo
+    api.ar_ligar(False)
+    assert avisos == [True, False]
+
+
 def test_aparelho_nao_configurado():
     r = Api(erro_ar="Ar-condicionado não configurado.").estado_ar()
     assert r == {"ok": False, "configurado": False, "erro": "Ar-condicionado não configurado."}
