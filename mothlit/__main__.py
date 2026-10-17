@@ -1,4 +1,4 @@
-"""Ponto de entrada: `python -m mothlit [setup | test-lampada | test-ar]`."""
+"""Ponto de entrada: `python -m mothlit [setup | test-lampada | test-ar]`. Sem argumento abre a UI."""
 
 import argparse
 import sys
@@ -93,7 +93,9 @@ def main() -> int:
         elif args.comando == "test-ar":
             test_ar()
         else:
-            print("A interface gráfica chega na Fase 2. Por enquanto: setup, test-lampada, test-ar.")
+            from .ui.app import executar
+
+            executar()
     except (ErroDispositivo, config.ErroConfiguracao) as e:
         print(f"Erro: {e}", file=sys.stderr)
         return 1
