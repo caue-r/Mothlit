@@ -35,6 +35,23 @@ def test_erro_vira_notificacao():
     b._icone.notify.assert_called_with("Lâmpada inacessível.", "Mothlit")
 
 
+def test_clique_esquerdo_abre_o_mini_painel():
+    abrir, clicar = MagicMock(), MagicMock()
+    b = Bandeja(MagicMock(), ao_abrir=abrir, ao_sair=MagicMock(), ao_clicar=clicar)
+    b._clicar()
+    clicar.assert_called_once()
+    abrir.assert_not_called()
+    b._abrir()  # "Abrir Mothlit" no menu do botão direito continua abrindo o app completo
+    abrir.assert_called_once()
+
+
+def test_sem_mini_painel_o_clique_abre_o_app():
+    abrir = MagicMock()
+    b = Bandeja(MagicMock(), ao_abrir=abrir, ao_sair=MagicMock())
+    b._clicar()
+    abrir.assert_called_once()
+
+
 def test_sair_para_icone_e_fecha_janela():
     b = bandeja(MagicMock())
     b._sair()

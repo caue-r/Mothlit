@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Mothlit · controles rápidos</title>
+  <link rel="stylesheet" href="estilo.css">
+  <link rel="stylesheet" href="flyout.css">
+</head>
+<body class="flyout">
+<div class="painel" id="painel">
+
+  <header class="fly-topo">
+    <img class="fly-logo" src="moth.svg" alt="">
+    <span class="fly-titulo">Mothlit</span>
+    <button class="botao-icone" id="fly-expandir" title="Abrir o Mothlit completo" data-icone="expandir"></button>
+  </header>
+
+  <section class="fly-secao desligado" id="fly-luz">
+    <div class="fly-linha">
+      <span class="fly-icone" id="fly-luz-icone" data-icone="lampada"></span>
+      <div class="fly-textos">
+        <strong id="fly-luz-nome">Lâmpada</strong>
+        <small class="situacao" id="fly-luz-sit">Conectando…</small>
+      </div>
+      <button class="energia" id="fly-luz-energia" title="Ligar/desligar" data-icone="energia"></button>
+      <button class="fly-abrir" data-aba="luz" title="Abrir na aba Luz" data-icone="direita"></button>
+    </div>
+    <div class="fly-controle">
+      <span class="icone-suave" data-icone="sol"></span>
+      <input type="range" class="slider" id="fly-brilho" min="1" max="100" step="1" value="1">
+      <span class="valor" id="fly-brilho-valor">–</span>
+    </div>
+  </section>
+
+  <section class="fly-secao desligado" id="fly-ar">
+    <div class="fly-linha">
+      <span class="fly-icone" data-icone="floco"></span>
+      <div class="fly-textos">
+        <strong id="fly-ar-nome">Ar-condicionado</strong>
+        <small class="situacao" id="fly-ar-sit">Conectando…</small>
+      </div>
+      <button class="energia" id="fly-ar-energia" title="Ligar/desligar" data-icone="energia"></button>
+      <button class="fly-abrir" data-aba="clima" title="Abrir na aba Clima" data-icone="direita"></button>
+    </div>
+    <div class="fly-controle fly-temp">
+      <button class="botao-icone" id="fly-menos" title="Diminuir" data-icone="menos"></button>
+      <div class="fly-alvo"><span id="fly-alvo">–</span><small>°C</small></div>
+      <button class="botao-icone" id="fly-mais" title="Aumentar" data-icone="mais"></button>
+    </div>
+  </section>
+
+</div>
+<script src="comum.js"></script>
+<script src="flyout.js"></script>
+</body>
+</html>

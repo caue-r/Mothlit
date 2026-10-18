@@ -7,6 +7,7 @@ separada, então a rede nunca trava a interface. Toda resposta é um dict simple
 """
 
 import ctypes
+import json
 import logging
 import threading
 import os
@@ -88,6 +89,8 @@ class Api:
         # último liga/desliga conhecido de cada aparelho (usado no menu da bandeja)
         self._ligado: dict[str, bool | None] = {"ar": None, "luz": None}
         self._saindo = False
+        self._painel = None  # mini painel da bandeja (ui.flyout.PainelRapido)
+        self._abrir_completo: Callable[[str | None], None] | None = None
         self._ao_mudar: Callable[[], None] | None = None
 
     @classmethod
@@ -209,6 +212,17 @@ class Api:
             return {"ok": True, "dados": "bandeja"}
         self.sair()
         return {"ok": True, "dados": "saiu"}
+
+    def esconder_flyout(self):
+        """O mini painel perdeu o foco (ou Esc)."""
+        if self._painel:
+            self._painel.esconder()
+
+    def abrir_completo(self, aba: str | None = None):
+        """Botão de expandir / setas do mini painel: abre a janela completa, opcionalmente numa aba."""
+        self.esconder_flyout()
+        if self._abrir_completo:
+            self._abrir_completo(aba)
 
     def sair(self):
         """Encerra de verdade (menu da bandeja), ignorando a preferência de fechar para a bandeja."""
@@ -345,6 +359,7 @@ def _atender_evento(nome: str, acao: Callable[[], None], descricao: str) -> None
 def executar(na_bandeja: bool = False) -> None:
     """Abre a janela. `na_bandeja`: começa escondida (usado ao iniciar com o Windows)."""
     from ..tray import Bandeja
+    from .flyout import PainelRapido
 
     if _ja_aberto(trazer_janela=not na_bandeja):
         return
@@ -381,9 +396,20 @@ def executar(na_bandeja: bool = False) -> None:
             return False
         return True
 
+    painel = PainelRapido(api, FUNDO)
+    api._painel = painel
+
+    def abrir_completo(aba: str | None = None) -> None:
+        mostrar()
+        if aba in ("clima", "luz"):
+            janela.evaluate_js(f"window.selecionarAba && selecionarAba({json.dumps(aba)})")
+
+    api._abrir_completo = abrir_completo
+
     bandeja = Bandeja(
         api,
         ao_abrir=mostrar,
+        ao_clicar=painel.alternar,
         ao_sair=api.sair,
         ao_alterar=lambda: janela.evaluate_js("window.atualizarTudo && atualizarTudo()"),
     )
@@ -396,5 +422,6 @@ def executar(na_bandeja: bool = False) -> None:
     janela.events.loaded += lambda: log.info("Interface carregada")
     janela.events.restored += lambda: janela.evaluate_js("window.aoRestaurar && aoRestaurar()")
     janela.events.closed += bandeja.parar
+    janela.events.closed += painel.destruir  # sem isso o webview.start não retorna
     bandeja.iniciar()
     webview.start(debug=debug, icon=str(marca.arquivo_ico()))

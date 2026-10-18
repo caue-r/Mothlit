@@ -1,0 +1,64 @@
+/* Mini painel da bandeja. Reaproveita os tokens, sliders e botões de estilo.css. */
+
+body.flyout { background: var(--fundo); }
+
+.painel {
+  height: 100%;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px;
+  opacity: 0; transform: translateY(10px);
+  transition: opacity 220ms var(--suave), transform 320ms var(--suave);
+}
+.painel.visivel { opacity: 1; transform: none; }
+
+/* cabeçalho */
+.fly-topo { display: flex; align-items: center; gap: 9px; height: 36px; padding: 0 4px 0 6px; }
+.fly-logo { width: 20px; height: 20px; opacity: .9; }
+.fly-titulo { flex: 1; font-size: 13px; font-weight: 500; color: var(--texto-suave); }
+.fly-topo .botao-icone { width: 30px; height: 30px; font-size: 14px; }
+
+/* seções (uma por aparelho) */
+.fly-secao {
+  background: var(--card); border: 1px solid var(--card-borda); border-radius: 14px;
+  padding: 12px 10px 10px 14px;
+}
+.fly-linha { display: flex; align-items: center; gap: 12px; }
+.fly-icone {
+  width: 34px; height: 34px; flex: none; border-radius: 50%;
+  display: grid; place-items: center; font-size: 17px;
+  color: var(--texto-suave); background: var(--bloco);
+  transition: color var(--medio), background var(--medio), box-shadow var(--lento) var(--suave);
+}
+#fly-luz:not(.desligado) .fly-icone {
+  color: var(--cor-luz, #fff);
+  background: color-mix(in srgb, var(--cor-luz, #fff) 14%, var(--bloco));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--cor-luz, #fff) 30%, transparent);
+}
+#fly-ar:not(.desligado) .fly-icone { color: var(--visor); background: color-mix(in srgb, var(--visor) 14%, var(--bloco)); }
+
+.fly-textos { flex: 1; min-width: 0; }
+.fly-textos strong { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fly-textos small { display: block; margin-top: 1px; font-size: 11.5px; }
+
+.fly-secao .energia { width: 36px; height: 36px; font-size: 15px; }
+.fly-abrir {
+  width: 26px; height: 36px; flex: none; display: grid; place-items: center; font-size: 15px;
+  color: var(--texto-suave); border-radius: 8px;
+  transition: color var(--rapido), background var(--rapido), transform var(--rapido) var(--suave);
+}
+.fly-abrir:hover { color: var(--texto); background: var(--bloco); }
+.fly-abrir:active { transform: translateX(2px); }
+
+/* controles */
+.fly-controle { display: flex; align-items: center; gap: 12px; margin: 10px 2px 0 6px; }
+.fly-controle .valor { width: 38px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+.fly-temp { justify-content: space-between; margin-top: 8px; }
+.fly-temp .botao-icone { width: 32px; height: 32px; font-size: 13px; }
+.fly-alvo { display: flex; align-items: flex-start; gap: 3px; }
+.fly-alvo span { font-size: 26px; font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; }
+.fly-alvo small { font-size: 11px; color: var(--texto-suave); margin-top: 3px; }
+
+/* desligado: ajustes apagados (o botão de energia continua clicável) */
+.fly-secao .fly-controle { transition: opacity var(--medio) var(--suave); }
+#fly-ar.desligado .fly-controle { opacity: .35; pointer-events: none; }
+.fly-secao.offline .fly-controle, .fly-secao.offline .energia { opacity: .35; pointer-events: none; }

@@ -83,7 +83,8 @@ uv run python -m mothlit test-ar        # mostra capabilities e estado; comandos
 ### Bandeja do sistema
 
 - **–** (minimizar) esconde a janela na bandeja; **×** encerra o app (ou vai para a bandeja, veja abaixo).
-- Clique no ícone da mariposa para reabrir. O menu tem **Ligar/Desligar luz**, **Ligar/Desligar ar** (o texto acompanha o estado atual) e **Sair**. Ações pela bandeja mostram uma notificação do Windows.
+- **Clique no ícone da mariposa**: abre o **mini painel** junto à bandeja, só com o essencial (lâmpada: liga/desliga e brilho; ar: liga/desliga, temperatura − / + e ambiente). Ele some ao clicar fora (ou Esc). O botão de expandir abre o app completo, e a seta › de cada aparelho abre direto na aba dele.
+- **Botão direito no ícone**: o menu tem **Abrir Mothlit** (app completo), **Ligar/Desligar luz**, **Ligar/Desligar ar** (o texto acompanha o estado atual) e **Sair**. Ações pela bandeja mostram uma notificação do Windows.
 - O estado dos dois aparelhos é relido a cada 30 s (e no botão ⟳ ou F5).
 - Só existe uma instância: abrir o Mothlit de novo traz a janela que já está rodando (inclusive se ele iniciou escondido).
 
@@ -137,8 +138,10 @@ mothlit/
   inicializacao.py       iniciar com o Windows (registro Run do usuário)
   ui/
     app.py               janela pywebview (sem moldura) + Api: a ponte que o JavaScript chama
+    flyout.py            mini painel da bandeja (abre junto à barra de tarefas, some ao perder o foco)
     marca.py             gera o .ico da mariposa a partir de web/moth.svg
-    web/                 interface em HTML/CSS/JS (index.html, estilo.css, app.js, moth.svg)
+    web/                 interface em HTML/CSS/JS: index.html/app.js (completa), flyout.* (mini painel),
+                         comum.js (ícones, ponte com o Python, sliders), estilo.css, moth.svg
 empacotamento/            mothlit.spec (PyInstaller), mothlit_app.py (entrada do .exe), instalar.ps1/.cmd, atualizar.cmd
 tests/                   pytest com mocks (tinytuya mockado, httpx.MockTransport)
 ```

@@ -122,6 +122,18 @@ def test_fechar_respeita_preferencia(monkeypatch):
     api._janela.destroy.assert_called_once()
 
 
+def test_abrir_completo_fecha_o_painel_e_abre_na_aba():
+    api = Api()
+    api._painel = MagicMock()
+    aberto = []
+    api._abrir_completo = aberto.append
+    api.abrir_completo("luz")
+    api._painel.esconder.assert_called_once()
+    assert aberto == ["luz"]
+    api.esconder_flyout()
+    assert api._painel.esconder.call_count == 2
+
+
 def test_sair_ignora_preferencia():
     api = Api()
     api._janela = MagicMock()

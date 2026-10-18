@@ -93,6 +93,8 @@ def verificar() -> None:
 
     passos = [
         ("Interface (web/index.html)", lambda: (app.WEB / "index.html").is_file() or _falha("não encontrada")),
+        ("Mini painel (web/flyout.html, comum.js)", lambda: all((app.WEB / n).is_file() for n in
+            ("flyout.html", "flyout.js", "flyout.css", "comum.js")) or _falha("arquivos ausentes")),
         ("Ícone da janela", marca.arquivo_ico),
         ("Ícone da bandeja", marca.ico_bandeja),
         ("Keyring do Windows", lambda: "Windows" in type(keyring.get_keyring()).__module__

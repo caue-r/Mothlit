@@ -49,10 +49,14 @@ class _IconeNitido(pystray.Icon):
 
 class Bandeja:
     def __init__(self, api, ao_abrir: Callable[[], None], ao_sair: Callable[[], None],
-                 ao_alterar: Callable[[], None] | None = None):
-        """`api` é a mesma `ui.app.Api` usada pela janela; `ao_alterar` avisa a janela para reler o estado."""
+                 ao_alterar: Callable[[], None] | None = None, ao_clicar: Callable[[], None] | None = None):
+        """`api` é a mesma `ui.app.Api` usada pela janela; `ao_alterar` avisa a janela para reler o estado.
+
+        `ao_clicar`: clique esquerdo no ícone (o mini painel). Sem ele, o clique abre o app completo.
+        """
         self._api = api
         self._ao_abrir = ao_abrir
+        self._ao_clicar = ao_clicar or ao_abrir
         self._ao_sair = ao_sair
         self._ao_alterar = ao_alterar
         try:
@@ -66,7 +70,9 @@ class Bandeja:
             "Mothlit",
             ico=ico,
             menu=pystray.Menu(
-                pystray.MenuItem("Abrir Mothlit", self._abrir, default=True),
+                # item padrão = clique esquerdo; invisível no menu do botão direito
+                pystray.MenuItem("Controles rápidos", self._clicar, default=True, visible=False),
+                pystray.MenuItem("Abrir Mothlit", self._abrir),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(lambda _: self._rotulo("luz"), lambda: self._acao("luz")),
                 pystray.MenuItem(lambda _: self._rotulo("ar"), lambda: self._acao("ar")),
@@ -102,6 +108,9 @@ class Bandeja:
 
     def _abrir(self) -> None:
         self._ao_abrir()
+
+    def _clicar(self) -> None:
+        self._ao_clicar()
 
     def _sair(self) -> None:
         self.parar()
