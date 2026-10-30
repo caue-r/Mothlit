@@ -1,55 +1,55 @@
-"""Adaptadores de dispositivo e fábricas a partir da configuração."""
+"""Device adapters and factories built from the configuration."""
 
 from .. import config
-from .ar_condicionado import ArCondicionado, EstadoAr
-from .base import Device, ErroDispositivo
-from .lampada import EstadoLampada, Lampada
-from .smartthings import AuthOAuth, AuthPAT, CredenciaisOAuth, SmartThingsClient
+from .air_conditioner import AcState, AirConditioner
+from .base import Device, DeviceError
+from .lamp import Lamp, LampState
+from .smartthings import AuthOAuth, AuthPAT, OAuthCredentials, SmartThingsClient
 
 __all__ = [
-    "ArCondicionado",
+    "AcState",
+    "AirConditioner",
     "Device",
-    "ErroDispositivo",
-    "EstadoAr",
-    "EstadoLampada",
-    "Lampada",
-    "criar_ar",
-    "criar_auth_smartthings",
-    "criar_lampada",
+    "DeviceError",
+    "Lamp",
+    "LampState",
+    "create_ac",
+    "create_lamp",
+    "create_smartthings_auth",
 ]
 
-_DICA_SETUP = "Rode 'uv run python -m mothlit setup'."
+_SETUP_HINT = "Run 'uv run python -m mothlit setup'."
 
 
-def criar_lampada(cfg: config.Config | None = None) -> Lampada:
-    cfg = cfg or config.carregar()
-    chave = config.ler_segredo(config.SEGREDO_LAMPADA_KEY)
-    if not (cfg.lampada_id and cfg.lampada_ip and chave):
-        raise config.ErroConfiguracao(f"Lâmpada não configurada. {_DICA_SETUP}")
-    lampada = Lampada(cfg.lampada_id, cfg.lampada_ip, chave, cfg.lampada_versao)
-    lampada.nome = cfg.lampada_nome
-    return lampada
+def create_lamp(cfg: config.Config | None = None) -> Lamp:
+    cfg = cfg or config.load()
+    key = config.read_secret(config.SECRET_LAMP_KEY)
+    if not (cfg.lamp_id and cfg.lamp_ip and key):
+        raise config.ConfigError(f"Lamp not configured. {_SETUP_HINT}")
+    lamp = Lamp(cfg.lamp_id, cfg.lamp_ip, key, cfg.lamp_version)
+    lamp.name = cfg.lamp_name
+    return lamp
 
 
-def salvar_credenciais_oauth(credenciais: CredenciaisOAuth) -> None:
-    config.salvar_segredo_json(config.SEGREDO_SMARTTHINGS_OAUTH, credenciais.para_dict())
+def save_oauth_credentials(credentials: OAuthCredentials) -> None:
+    config.save_secret_json(config.SECRET_SMARTTHINGS_OAUTH, credentials.to_dict())
 
 
-def criar_auth_smartthings() -> AuthOAuth | AuthPAT | None:
-    """OAuth (renova sozinho) se configurado; senão o token pessoal (PAT)."""
-    dados = config.ler_segredo_json(config.SEGREDO_SMARTTHINGS_OAUTH)
-    if dados:
+def create_smartthings_auth() -> AuthOAuth | AuthPAT | None:
+    """OAuth (refreshes itself) if configured; otherwise the personal access token (PAT)."""
+    data = config.read_secret_json(config.SECRET_SMARTTHINGS_OAUTH)
+    if data:
         try:
-            return AuthOAuth(CredenciaisOAuth.de_dict(dados), salvar=salvar_credenciais_oauth)
+            return AuthOAuth(OAuthCredentials.from_dict(data), save=save_oauth_credentials)
         except KeyError:
-            pass  # credenciais incompletas: cai para o PAT
-    token = config.ler_segredo(config.SEGREDO_SMARTTHINGS_PAT)
+            pass  # incomplete credentials: fall back to the PAT
+    token = config.read_secret(config.SECRET_SMARTTHINGS_PAT)
     return AuthPAT(token) if token else None
 
 
-def criar_ar(cfg: config.Config | None = None) -> ArCondicionado:
-    cfg = cfg or config.carregar()
-    auth = criar_auth_smartthings()
-    if not (cfg.ar_device_id and auth):
-        raise config.ErroConfiguracao(f"Ar-condicionado não configurado. {_DICA_SETUP}")
-    return ArCondicionado(SmartThingsClient(auth), cfg.ar_device_id)
+def create_ac(cfg: config.Config | None = None) -> AirConditioner:
+    cfg = cfg or config.load()
+    auth = create_smartthings_auth()
+    if not (cfg.ac_device_id and auth):
+        raise config.ConfigError(f"Air conditioner not configured. {_SETUP_HINT}")
+    return AirConditioner(SmartThingsClient(auth), cfg.ac_device_id)

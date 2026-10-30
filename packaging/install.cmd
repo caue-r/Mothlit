@@ -1,3 +1,3 @@
 @echo off
-rem Instala o Mothlit com dois cliques (sem precisar mexer na pol?tica de execu??o do PowerShell).
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0instalar.ps1" %*
+rem Installs Mothlit with a double click (no need to change the PowerShell execution policy).
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*

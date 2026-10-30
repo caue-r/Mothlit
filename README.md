@@ -1,156 +1,164 @@
 # Mothlit
 
-App desktop pessoal para controlar pelo PC, sem passar pela Alexa:
+Personal desktop app to control from the PC, without going through Alexa:
 
-- **Lâmpada Ekaza** (plataforma Tuya / Smart Life): controle **local** pela LAN com [tinytuya](https://github.com/jasonacox/tinytuya).
-- **Ar-condicionado Samsung**: [SmartThings REST API](https://developer.smartthings.com/docs/api/public).
+- **Ekaza lamp** (Tuya / Smart Life platform): **local** control over the LAN with [tinytuya](https://github.com/jasonacox/tinytuya).
+- **Samsung air conditioner**: [SmartThings REST API](https://developer.smartthings.com/docs/api/public).
 
-## Instalação
+## Installation
 
-Usa [uv](https://docs.astral.sh/uv/). Ele instala o Python 3.12 se for preciso e trava as versões no `uv.lock`, então o ambiente é reproduzível.
+Uses [uv](https://docs.astral.sh/uv/). It installs Python 3.12 if needed and pins the versions in `uv.lock`, so the environment is reproducible.
 
 ```powershell
 uv sync
-uv run pytest            # testes (não precisam dos aparelhos)
+uv run pytest            # tests (they do not need the devices)
 ```
 
-## Configuração
+## Configuration
 
 ```powershell
 uv run python -m mothlit setup
 ```
 
-O setup grava:
+Setup saves:
 
-- o que não é sensível (IDs, IP, versão do protocolo) em `%APPDATA%\Mothlit\.env` (modelo em `.env.example`);
-- os segredos (`local_key` da lâmpada e token da SmartThings) no **keyring** do Windows (Gerenciador de Credenciais › Credenciais do Windows › `mothlit`).
+- what is not sensitive (IDs, IP, protocol version) in `%APPDATA%\Mothlit\.env` (template in `.env.example`);
+- the secrets (the lamp's `local_key` and the SmartThings token) in the Windows **keyring** (Credential Manager › Windows Credentials › `mothlit`).
 
-### Lâmpada (Tuya)
+### Lamp (Tuya)
 
-O controle local precisa de `device_id`, `local_key`, IP e **versão do protocolo**. A `local_key` só sai da nuvem Tuya, então é preciso uma conta de desenvolvedor uma única vez:
+Local control needs the `device_id`, the `local_key`, the IP and the **protocol version**. The `local_key` only comes from the Tuya cloud, so you need a developer account once:
 
-1. Crie uma conta em [iot.tuya.com](https://iot.tuya.com) › *Cloud › Development › Create Cloud Project*. Escolha o data center da sua conta Smart Life (no Brasil costuma ser *Western America*, região `us`).
-2. Em *Devices › Link App Account*, escaneie o QR code com o app Smart Life.
-3. Anote o **Access ID** e o **Access Secret** do projeto.
+1. Create an account at [iot.tuya.com](https://iot.tuya.com) › *Cloud › Development › Create Cloud Project*. Choose the data center of your Smart Life account (in Brazil it is usually *Western America*, region `us`).
+2. In *Devices › Link App Account*, scan the QR code with the Smart Life app.
+3. Write down the project's **Access ID** and **Access Secret**.
 
-No setup, escolha:
+In setup, choose:
 
-- **Opção 1 (automática)**: informe Access ID, Access Secret e região. O Mothlit busca o `device_id` e a `local_key` na nuvem e procura IP e versão na rede local. O Access Secret não é salvo.
-- **Opção 2 (manual)**: rode `uv run python -m tinytuya wizard` (gera `devices.json` com `id` e `key`) e `uv run python -m tinytuya scan` (mostra IP e versão), e digite os valores.
+- **Option 1 (automatic)**: enter the Access ID, Access Secret and region. Mothlit fetches the `device_id` and the `local_key` from the cloud and looks up the IP and version on the local network. The Access Secret is not saved.
+- **Option 2 (manual)**: run `uv run python -m tinytuya wizard` (creates `devices.json` with `id` and `key`) and `uv run python -m tinytuya scan` (shows IP and version), and type the values.
 
-> A `local_key` muda se você parear a lâmpada de novo no app. Nesse caso, rode o setup outra vez.
-> Reserve o IP da lâmpada no roteador (DHCP estático).
+> The `local_key` changes if you pair the lamp again in the app. If that happens, run setup again.
+> Reserve the lamp's IP on the router (static DHCP).
 
-### Ar-condicionado (SmartThings)
+### Air conditioner (SmartThings)
 
-O setup pergunta como o Mothlit vai acessar a SmartThings:
+Setup asks how Mothlit will access SmartThings:
 
-#### 1. OAuth (recomendado: autoriza uma vez e renova sozinho)
+#### 1. OAuth (recommended: authorize once and it renews itself)
 
-O access token dura cerca de 24 h e é **renovado automaticamente** com o refresh token, que vale 30 dias e muda a cada renovação. Enquanto o Mothlit rodar ao menos uma vez a cada 30 dias, você não precisa fazer mais nada (com "Iniciar com o Windows" ligado, isso é praticamente garantido).
+The access token lasts about 24 h and is **renewed automatically** with the refresh token, which lasts 30 days and changes on every renewal. As long as Mothlit runs at least once every 30 days, you do not need to do anything else (with "Launch at Windows startup" on, that is practically guaranteed).
 
-Passo único, criar um app OAuth na sua conta com a [SmartThings CLI](https://github.com/SmartThingsCommunity/smartthings-cli) (o cadastro pelo site ainda não está disponível):
+One-time step, create an OAuth app in your account with the [SmartThings CLI](https://github.com/SmartThingsCommunity/smartthings-cli) (registering through the website is not available yet):
 
-1. Instale a CLI: baixe e rode o `smartthings.msi` da [página de releases](https://github.com/SmartThingsCommunity/smartthings-cli/releases).
-2. Rode `smartthings apps:create`. Na primeira vez, ele abre o navegador para você entrar na conta Samsung.
-   - Tipo de app: **OAuth-In App**
-   - Display Name: `Mothlit` · Description: qualquer texto · Icon Image URL e Target URL: em branco
-   - Escopos: `r:devices:*` e `x:devices:*`
+1. Install the CLI: download and run `smartthings.msi` from the [releases page](https://github.com/SmartThingsCommunity/smartthings-cli/releases).
+2. Run `smartthings apps:create`. The first time, it opens the browser so you can sign in to your Samsung account.
+   - App type: **OAuth-In App**
+   - Display Name: `Mothlit` · Description: any text · Icon Image URL and Target URL: blank
+   - Scopes: `r:devices:*` and `x:devices:*`
    - Redirect URI: **Add Redirect URI** › `https://httpbin.org/get` › *Finish editing Redirect URIs* › *Finish and create OAuth-In SmartApp*
-3. Guarde o **OAuth Client Id** e o **OAuth Client Secret**. O secret só aparece uma vez.
-4. Rode `uv run python -m mothlit setup`, escolha **OAuth** e cole o Client Id e o Client Secret. O navegador abre a tela de autorização da Samsung. Depois de autorizar, ele vai para uma página do httpbin: copie o **endereço completo** da barra do navegador e cole no setup.
+3. Keep the **OAuth Client Id** and the **OAuth Client Secret**. The secret is shown only once.
+4. Run `uv run python -m mothlit setup`, choose **OAuth** and paste the Client Id and the Client Secret. The browser opens Samsung's authorization screen. After you authorize, it goes to an httpbin page: copy the **full address** from the browser bar and paste it into setup.
 
-Detalhes:
-- As credenciais (client id/secret e tokens) ficam no keyring, em pedaços se forem grandes (o Windows limita cada segredo a ~1280 caracteres).
-- Cada refresh token só pode ser usado uma vez. O Mothlit grava o novo no keyring na hora e renova de forma thread-safe (várias chamadas simultâneas causam uma única renovação).
-- O Mothlit tenta `https://api.smartthings.com/oauth/token` e, se não existir, `.../v1/oauth/token` (a documentação nova e a comunidade citam endereços diferentes).
-- Se a autorização expirar (mais de 30 dias sem rodar, ou revogada), o app avisa e basta rodar o setup de novo.
+Details:
+- The credentials (client id/secret and tokens) are kept in the keyring, in chunks if they are large (Windows limits each secret to ~1280 characters).
+- Each refresh token can only be used once. Mothlit saves the new one to the keyring right away and refreshes in a thread-safe way (several simultaneous calls cause a single refresh).
+- Mothlit tries `https://api.smartthings.com/oauth/token` and, if it does not exist, `.../v1/oauth/token` (the new docs and the community mention different addresses).
+- If the authorization expires (more than 30 days without running, or revoked), the app tells you and you just run setup again.
 
-#### 2. Token pessoal (PAT)
+#### 2. Personal access token (PAT)
 
-1. Acesse <https://account.smartthings.com/tokens> e crie um token com as permissões de **Devices**: *List*, *See* e *Control* (`r:devices:*`, `x:devices:*`).
-2. No setup, escolha **Token pessoal** e cole o token.
+1. Go to <https://account.smartthings.com/tokens> and create a token with the **Devices** permissions: *List*, *See* and *Control* (`r:devices:*`, `x:devices:*`).
+2. In setup, choose **Personal access token** and paste the token.
 
-**Limitação:** PATs criados depois de 30/12/2024 valem só **24 horas**. Quando expirar, cole um novo em **Configurações › Acesso à SmartThings**: o Mothlit valida o token antes de salvar.
-## Uso
+**Limitation:** PATs created after 12/30/2024 are valid for only **24 hours**. When it expires, paste a new one in **Settings › SmartThings access**: Mothlit validates the token before saving it.
 
-```powershell
-uv run python -m mothlit                # abre a interface
-uv run python -m mothlit test-lampada   # liga, muda brilho/temperatura/cor e restaura o estado inicial
-uv run python -m mothlit test-ar        # mostra capabilities e estado; comandos só se você confirmar
-```
+### Upgrading from an older version
 
-### Bandeja do sistema
-
-- **–** (minimizar) esconde a janela na bandeja; **×** encerra o app (ou vai para a bandeja, veja abaixo).
-- **Clique no ícone da mariposa**: abre o **mini painel** junto à bandeja, só com o essencial (lâmpada: liga/desliga e brilho; ar: liga/desliga, temperatura − / + e ambiente). Ele some ao clicar fora (ou Esc). O botão de expandir abre o app completo, e a seta › de cada aparelho abre direto na aba dele.
-- **Botão direito no ícone**: o menu tem **Abrir Mothlit** (app completo), **Ligar/Desligar luz**, **Ligar/Desligar ar** (o texto acompanha o estado atual) e **Sair**. Ações pela bandeja mostram uma notificação do Windows.
-- O estado dos dois aparelhos é relido a cada 30 s (e no botão ⟳ ou F5).
-- Só existe uma instância: abrir o Mothlit de novo traz a janela que já está rodando (inclusive se ele iniciou escondido).
-
-### Configurações (botão de ajustes)
-
-- **Iniciar com o Windows**: grava `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (só o seu usuário, sem admin). O Mothlit abre escondido na bandeja (`--bandeja`), sem console.
-- **Minimizar na bandeja ao fechar**: o × e o Alt+F4 escondem o app; para encerrar, use **Sair** no menu da bandeja. Fica salvo em `%APPDATA%\Mothlit\preferencias.json`.
-## Executável (Windows)
+Older versions saved the settings with Portuguese names (`LAMPADA_*` in the `.env`, `preferencias.json`, etc.). Mothlit renames them automatically the first time the new version runs, so you do not need to run setup again.
+## Usage
 
 ```powershell
-uv run pyinstaller empacotamento/mothlit.spec --noconfirm        # gera dist\Mothlit\
-powershell -ExecutionPolicy Bypass -File empacotamento\instalar.ps1
+uv run python -m mothlit             # opens the interface
+uv run python -m mothlit test-lamp   # turns on, changes brightness/temperature/color and restores the initial state
+uv run python -m mothlit test-ac     # shows capabilities and state; commands only if you confirm
 ```
 
-Ou dê dois cliques em `empacotamento\instalar.cmd`: ele roda o instalador e espera um Enter no final para você ler o resultado (ou o erro).
+### System tray
 
-O build gera uma pasta (`onedir`) com dois executáveis que compartilham as dependências:
+- **–** (minimize) hides the window in the tray; **×** quits the app (or goes to the tray, see below).
+- **Click the moth icon**: opens the **quick panel** next to the tray, with just the essentials (lamp: on/off and brightness; AC: on/off, temperature − / + and room temperature). It disappears when you click outside (or Esc). The expand button opens the full app, and each device's › arrow opens straight on its tab.
+- **Right-click the icon**: the menu has **Open Mothlit** (full app), **Turn light on/off**, **Turn AC on/off** (the label follows the current state) and **Quit**. Tray actions show a Windows notification.
+- The state of both devices is reread every 30 s (and with the ⟳ button or F5).
+- There is only one instance: opening Mothlit again brings up the window that is already running (even if it started hidden).
 
-| Arquivo | Para quê |
+### Settings (settings button)
+
+- **Launch at Windows startup**: writes `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (your user only, no admin). Mothlit opens hidden in the tray (`--tray`), without a console.
+- **Minimize to tray on close**: × and Alt+F4 hide the app; to quit, use **Quit** in the tray menu. Saved in `%APPDATA%\Mothlit\preferences.json`.
+## Executable (Windows)
+
+```powershell
+uv run pyinstaller packaging/mothlit.spec --noconfirm        # builds dist\Mothlit\
+powershell -ExecutionPolicy Bypass -File packaging\install.ps1
+```
+
+Or double-click `packaging\install.cmd`: it runs the installer and waits for an Enter at the end so you can read the result (or the error).
+
+The build creates a folder (`onedir`) with two executables that share the dependencies:
+
+| File | What for |
 |---|---|
-| `Mothlit.exe` | Interface e bandeja, sem console. É ele que inicia com o Windows. |
-| `mothlit-cli.exe` | Linha de comando: `mothlit-cli setup`, `test-lampada`, `test-ar`. |
+| `Mothlit.exe` | Interface and tray, no console. This is the one that launches at Windows startup. |
+| `mothlit-cli.exe` | Command line: `mothlit-cli setup`, `test-lamp`, `test-ac`. |
 
-Usei pasta em vez de arquivo único porque o `onefile` se descompacta numa pasta temporária a cada abertura: inicia mais devagar (ruim para "Iniciar com o Windows") e costuma gerar falso positivo de antivírus.
+I used a folder instead of a single file because `onefile` unpacks itself into a temporary folder on every launch: it starts more slowly (bad for "Launch at Windows startup") and often triggers antivirus false positives.
 
-O `instalar.ps1` (sem administrador):
-- copia para `%LOCALAPPDATA%\Programs\Mothlit` e cria o atalho **Mothlit** no Menu Iniciar;
-- fecha o Mothlit instalado se ele estiver aberto;
-- se "Iniciar com o Windows" estiver ligado, aponta o registro para o novo `Mothlit.exe`.
+`install.ps1` (no administrator):
+- copies to `%LOCALAPPDATA%\Programs\Mothlit` and creates the **Mothlit** shortcut in the Start Menu;
+- closes the installed Mothlit if it is open;
+- if "Launch at Windows startup" is on, points the registry to the new `Mothlit.exe`.
 
-Configuração (`%APPDATA%\Mothlit`) e segredos (keyring) ficam fora da pasta do app, então reinstalar ou atualizar não perde nada. **Para atualizar** o app instalado depois de mudanças no código, dê dois cliques em `empacotamento\atualizar.cmd`: ele gera o build, roda `mothlit-cli verificar` no executável novo (ícones, interface, bandeja, keyring; sem abrir janela nem usar a rede) e só reinstala se tudo passar. O app instalado é uma cópia e não muda sozinho. Se o Mothlit estiver aberto, o instalador pede para ele sair (sem deixar ícone fantasma na bandeja) e o reabre na bandeja com a versão nova.
+Configuration (`%APPDATA%\Mothlit`) and secrets (keyring) live outside the app folder, so reinstalling or updating loses nothing. **To update** the installed app after code changes, double-click `packaging\update.cmd`: it builds, runs `mothlit-cli verify` on the new executable (icons, interface, tray, keyring; without opening a window or using the network) and only reinstalls if everything passes. The installed app is a copy and does not change by itself. If Mothlit is open, the installer asks it to quit (without leaving a ghost icon in the tray) and reopens it in the tray with the new version.
 
-O executável grava um log em `%APPDATA%\Mothlit\mothlit.log` (com rotação, até ~3 MB): é onde olhar se algo der errado, já que não há console.
+The executable writes a log to `%APPDATA%\Mothlit\mothlit.log` (rotated, up to ~3 MB): that is where to look if something goes wrong, since there is no console.
 
-Requisito: WebView2 Runtime, que já vem no Windows 11.
-## Estrutura
+Requirement: WebView2 Runtime, which already ships with Windows 11.
+## Structure
 
 ```
 mothlit/
-  __main__.py            CLI (setup, test-lampada, test-ar)
+  __main__.py            CLI (setup, test-lamp, test-ac)
   config.py              .env + keyring
-  setup.py               onboarding interativo
+  setup.py               interactive onboarding
   devices/
-    base.py              protocolo Device + ErroDispositivo
-    lampada.py           tinytuya.BulbDevice (detecta tipo e recursos pelos DPS)
-    smartthings.py       cliente httpx + autenticação (AuthPAT)
-    ar_condicionado.py   capabilities switch, thermostatCoolingSetpoint,
+    base.py              Device protocol + DeviceError
+    lamp.py              tinytuya.BulbDevice (detects type and features from the DPS)
+    smartthings.py       httpx client + authentication (AuthPAT, AuthOAuth)
+    air_conditioner.py   capabilities switch, thermostatCoolingSetpoint,
                          airConditionerMode, airConditionerFanMode, temperatureMeasurement,
                          fanOscillationMode, custom.airConditionerOptionalMode
-  tray.py                ícone na bandeja (pystray) com ações rápidas
-  inicializacao.py       iniciar com o Windows (registro Run do usuário)
+  tray.py                tray icon (pystray) with quick actions
+  startup.py             launch at Windows startup (user Run registry key)
   ui/
-    app.py               janela pywebview (sem moldura) + Api: a ponte que o JavaScript chama
-    flyout.py            mini painel da bandeja (abre junto à barra de tarefas, some ao perder o foco)
-    marca.py             gera o .ico da mariposa a partir de web/moth.svg
-    web/                 interface em HTML/CSS/JS: index.html/app.js (completa), flyout.* (mini painel),
-                         comum.js (ícones, ponte com o Python, sliders), estilo.css, moth.svg
-empacotamento/            mothlit.spec (PyInstaller), mothlit_app.py (entrada do .exe), instalar.ps1/.cmd, atualizar.cmd
-tests/                   pytest com mocks (tinytuya mockado, httpx.MockTransport)
+    app.py               pywebview window (frameless) + Api: the bridge the JavaScript calls
+    flyout.py            tray quick panel (opens next to the taskbar, hides when it loses focus)
+    brand.py             builds the moth .ico from web/moth.svg
+    web/                 HTML/CSS/JS interface: index.html/app.js (full), flyout.* (quick panel),
+                         common.js (icons, bridge to Python, sliders), style.css, moth.svg
+packaging/               mothlit.spec (PyInstaller), mothlit_app.py (.exe entry point), install.ps1/.cmd, update.cmd
+tests/                   pytest with mocks (mocked tinytuya, httpx.MockTransport)
 ```
 
-## Detalhes técnicos
+## Technical details
 
-- **Interface**: [pywebview](https://pywebview.flowrl.com/) usando o WebView2 (motor do Edge, já incluso no Windows 11). O visual é HTML/CSS/SVG, com transições aceleradas por GPU. Cada chamada do JavaScript para `pywebview.api` roda numa thread separada no Python, então a rede nunca trava a interface. Para abrir as ferramentas de desenvolvedor: `set MOTHLIT_DEBUG=1`.
-- **Lâmpada**: o tipo (A/B/C) é detectado pelos DPS com `detect_bulb()`. Temperatura de cor e cor só aparecem se a lâmpada tiver esses recursos. O tempo limite é de 2 s com 2 tentativas, em vez do padrão do tinytuya (5 s × 5 tentativas). O socket é protegido por uma trava, porque o tinytuya não é thread-safe.
-- **Ar-condicionado**:
-  - As capabilities vêm de `GET /devices/{id}`, descontando as listadas em `custom.disabledCapabilities`.
-  - Os modos e as velocidades vêm de `availableAcModes` e `availableAcFanModes`, que mudam conforme o modo atual (em `auto`, por exemplo, só existe ventilador `auto`). Se elas não vierem, o app usa `supportedAcModes` e `supportedAcFanModes`.
-  - A faixa de temperatura vem de `coolingSetpointRange`. Se não vier, o padrão é 16–30 °C.
+- **Interface**: [pywebview](https://pywebview.flowrl.com/) using WebView2 (the Edge engine, already included in Windows 11). The look is HTML/CSS/SVG, with GPU-accelerated transitions. Each JavaScript call to `pywebview.api` runs in a separate Python thread, so the network never freezes the interface. To open the developer tools: `set MOTHLIT_DEBUG=1`.
+- **Lamp**: the type (A/B/C) is detected from the DPS with `detect_bulb()`. Color temperature and color only show up if the lamp has those features. The timeout is 2 s with 2 retries, instead of the tinytuya default (5 s × 5 retries). The socket is guarded by a lock, because tinytuya is not thread-safe.
+- **Air conditioner**:
+  - The capabilities come from `GET /devices/{id}`, minus the ones listed in `custom.disabledCapabilities`.
+  - The modes and fan speeds come from `availableAcModes` and `availableAcFanModes`, which change with the current mode (in `auto`, for example, the only fan speed is `auto`). If they are missing, the app uses `supportedAcModes` and `supportedAcFanModes`.
+  - The temperature range comes from `coolingSetpointRange`. If it is missing, the default is 16–30 °C.
+
+## License
+
+[MIT](LICENSE)

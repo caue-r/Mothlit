@@ -1,7 +1,7 @@
-"""Mini painel da bandeja: janela pequena, sem moldura, que abre colada na bandeja.
+"""Tray quick panel: a small frameless window that opens right next to the tray.
 
-Abre com um clique no ícone da bandeja e some ao perder o foco (clicar fora), como
-os painéis rápidos do próprio Windows. Para o app completo, há o botão de expandir.
+It opens with a click on the tray icon and disappears when it loses focus (clicking outside),
+like Windows' own quick panels. For the full app there is the expand button.
 """
 
 import ctypes
@@ -16,134 +16,134 @@ import webview
 log = logging.getLogger(__name__)
 
 WEB = Path(__file__).resolve().parent / "web"
-LARGURA, ALTURA = 340, 264
-MARGEM = 12  # distância da barra de tarefas e da borda da tela
-# Clicar no ícone da bandeja com o painel aberto: o painel perde o foco (e some) um
-# instante antes do clique chegar. Sem esta janela de tempo, ele reabriria na hora.
-IGNORAR_CLIQUE_APOS_ESCONDER_S = 0.5
+WIDTH, HEIGHT = 340, 264
+MARGIN = 12  # distance from the taskbar and the screen edge
+# Clicking the tray icon with the panel open: the panel loses focus (and hides) an instant
+# before the click arrives. Without this time window, it would reopen right away.
+IGNORE_CLICK_AFTER_HIDE_S = 0.5
 
 
-def posicao(largura: int, altura: int) -> tuple[int, int]:
-    """Canto da área de trabalho junto à barra de tarefas, em pixels lógicos (os do pywebview)."""
+def position(width: int, height: int) -> tuple[int, int]:
+    """Corner of the work area next to the taskbar, in logical pixels (pywebview's)."""
     if sys.platform != "win32":
         return 100, 100
     u = ctypes.windll.user32
     area = wintypes.RECT()
-    u.SystemParametersInfoW(0x30, 0, ctypes.byref(area), 0)  # SPI_GETWORKAREA (pixels físicos)
-    escala = u.GetDpiForSystem() / 96
-    largura_tela = u.GetSystemMetrics(0)
-    x = area.right / escala - largura - MARGEM
-    y = area.bottom / escala - altura - MARGEM
-    if area.top > 0:  # barra de tarefas em cima
-        y = area.top / escala + MARGEM
-    if area.left > 0 and area.right >= largura_tela:  # barra de tarefas à esquerda
-        x = area.left / escala + MARGEM
+    u.SystemParametersInfoW(0x30, 0, ctypes.byref(area), 0)  # SPI_GETWORKAREA (physical pixels)
+    scale = u.GetDpiForSystem() / 96
+    screen_width = u.GetSystemMetrics(0)
+    x = area.right / scale - width - MARGIN
+    y = area.bottom / scale - height - MARGIN
+    if area.top > 0:  # taskbar at the top
+        y = area.top / scale + MARGIN
+    if area.left > 0 and area.right >= screen_width:  # taskbar on the left
+        x = area.left / scale + MARGIN
     return int(x), int(y)
 
 
-def _moldura() -> tuple[int, int]:
-    """Quanto a janela sem moldura "perde" do tamanho pedido ao pywebview (pixels lógicos).
+def _frame() -> tuple[int, int]:
+    """How much the frameless window "loses" from the size asked of pywebview (logical pixels).
 
-    O pywebview dimensiona como se houvesse a moldura padrão do Windows (bordas + barra de
-    título) e depois a esconde; o que sobra visível fica menor. Somamos isso de volta.
+    pywebview sizes it as if the standard Windows frame were there (borders + title bar) and then
+    hides it; what remains visible is smaller. We add that back.
     """
     if sys.platform != "win32":
         return 0, 0
     u = ctypes.windll.user32
-    escala = u.GetDpiForSystem() / 96
-    borda_x = u.GetSystemMetrics(32) + u.GetSystemMetrics(92)  # SM_CXSIZEFRAME + SM_CXPADDEDBORDER
-    borda_y = u.GetSystemMetrics(33) + u.GetSystemMetrics(92)  # SM_CYSIZEFRAME + SM_CXPADDEDBORDER
-    titulo = u.GetSystemMetrics(4)  # SM_CYCAPTION
-    return round(2 * borda_x / escala), round((2 * borda_y + titulo) / escala)
+    scale = u.GetDpiForSystem() / 96
+    border_x = u.GetSystemMetrics(32) + u.GetSystemMetrics(92)  # SM_CXSIZEFRAME + SM_CXPADDEDBORDER
+    border_y = u.GetSystemMetrics(33) + u.GetSystemMetrics(92)  # SM_CYSIZEFRAME + SM_CXPADDEDBORDER
+    caption = u.GetSystemMetrics(4)  # SM_CYCAPTION
+    return round(2 * border_x / scale), round((2 * border_y + caption) / scale)
 
 
-class PainelRapido:
-    def __init__(self, api, fundo: str):
-        x, y = posicao(LARGURA, ALTURA)
-        extra_l, extra_a = _moldura()
-        # Já nasce na posição certa: no pywebview, move() só roda depois que a janela foi exibida.
-        self.janela = webview.create_window(
-            "Mothlit · controles rápidos", url=str(WEB / "flyout.html"), js_api=api,
-            width=LARGURA + extra_l, height=ALTURA + extra_a, x=x, y=y, resizable=False, frameless=True, easy_drag=False,
-            background_color=fundo, hidden=True, on_top=True,
+class QuickPanel:
+    def __init__(self, api, background: str):
+        x, y = position(WIDTH, HEIGHT)
+        extra_w, extra_h = _frame()
+        # Created already in the right place: in pywebview, move() only works after the window was shown.
+        self.window = webview.create_window(
+            "Mothlit · quick controls", url=str(WEB / "flyout.html"), js_api=api,
+            width=WIDTH + extra_w, height=HEIGHT + extra_h, x=x, y=y, resizable=False, frameless=True,
+            easy_drag=False, background_color=background, hidden=True, on_top=True,
         )
-        self.visivel = False
-        self._escondido_em = 0.0
-        self._nativo_configurado = False
+        self.visible = False
+        self._hidden_at = 0.0
+        self._native_ready = False
 
-    # --- abrir / fechar ---
+    # --- open / close ---
 
-    def alternar(self) -> None:
-        """Clique no ícone da bandeja."""
-        if self.visivel:
-            self.esconder()
-        elif time.monotonic() - self._escondido_em >= IGNORAR_CLIQUE_APOS_ESCONDER_S:
-            self.mostrar()
+    def toggle(self) -> None:
+        """Click on the tray icon."""
+        if self.visible:
+            self.hide()
+        elif time.monotonic() - self._hidden_at >= IGNORE_CLICK_AFTER_HIDE_S:
+            self.show()
 
-    def mostrar(self) -> None:
-        self._fora_da_barra_de_tarefas()
-        self.janela.show()
-        self.visivel = True
-        self.janela.move(*posicao(LARGURA, ALTURA))  # caso a tela/barra tenha mudado desde a criação
-        self._configurar_nativo()
+    def show(self) -> None:
+        self._hide_from_taskbar()
+        self.window.show()
+        self.visible = True
+        self.window.move(*position(WIDTH, HEIGHT))  # in case the screen/taskbar changed since creation
+        self._setup_native()
         try:
-            ctypes.windll.user32.SetForegroundWindow(self.janela.native.Handle.ToInt32())
+            ctypes.windll.user32.SetForegroundWindow(self.window.native.Handle.ToInt32())
         except Exception:
             pass
-        self.janela.evaluate_js("window.aoMostrar && aoMostrar()")
+        self.window.evaluate_js("window.onShow && onShow()")
 
-    def esconder(self) -> None:
-        if not self.visivel:
+    def hide(self) -> None:
+        if not self.visible:
             return
-        self.visivel = False
-        self._escondido_em = time.monotonic()
-        self.janela.hide()
+        self.visible = False
+        self._hidden_at = time.monotonic()
+        self.window.hide()
 
-    def destruir(self) -> None:
-        """Fecha o painel junto com o app (senão o webview.start nunca retorna).
+    def destroy(self) -> None:
+        """Closes the panel together with the app (otherwise webview.start never returns).
 
-        Não usa janela.destroy(): no pywebview ele espera a janela ter sido exibida, e o
-        painel pode nunca ter sido aberto. Fecha o formulário nativo, de forma assíncrona.
+        Does not use window.destroy(): in pywebview it waits for the window to have been shown, and
+        the panel may never have been opened. It closes the native form, asynchronously.
         """
         try:
             from System import Action
 
-            nativo = self.janela.native
-            nativo.BeginInvoke(Action(nativo.Close))
+            native = self.window.native
+            native.BeginInvoke(Action(native.Close))
         except Exception:
-            log.debug("Painel já fechado", exc_info=True)
+            log.debug("Panel already closed", exc_info=True)
 
-    # --- janela nativa (WinForms) ---
+    # --- native window (WinForms) ---
 
-    def _fora_da_barra_de_tarefas(self) -> None:
-        """WS_EX_TOOLWINDOW: sem botão na barra de tarefas e fora do Alt+Tab, como os painéis do Windows.
+    def _hide_from_taskbar(self) -> None:
+        """WS_EX_TOOLWINDOW: no taskbar button and out of Alt+Tab, like the Windows panels.
 
-        (Não usar ShowInTaskbar do WinForms: ele recria a janela e derruba o WebView2 dentro dela.)
+        (Do not use WinForms' ShowInTaskbar: it recreates the window and takes down the WebView2 inside it.)
         """
         if sys.platform != "win32":
             return
         try:
-            nativo = self.janela.native
-            if not nativo.IsHandleCreated:
+            native = self.window.native
+            if not native.IsHandleCreated:
                 return
             u = ctypes.windll.user32
             u.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
             u.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
-            hwnd = nativo.Handle.ToInt32()
-            estilo = u.GetWindowLongW(hwnd, -20)  # GWL_EXSTYLE
-            u.SetWindowLongW(hwnd, -20, (estilo | 0x80) & ~0x40000)  # +TOOLWINDOW, -APPWINDOW
+            hwnd = native.Handle.ToInt32()
+            style = u.GetWindowLongW(hwnd, -20)  # GWL_EXSTYLE
+            u.SetWindowLongW(hwnd, -20, (style | 0x80) & ~0x40000)  # +TOOLWINDOW, -APPWINDOW
         except Exception:
-            log.debug("Não consegui tirar o painel da barra de tarefas", exc_info=True)
+            log.debug("Could not remove the panel from the taskbar", exc_info=True)
 
-    def _configurar_nativo(self) -> None:
-        """Uma vez: cantos arredondados e fechar ao perder o foco (Deactivate do formulário)."""
-        if self._nativo_configurado:
+    def _setup_native(self) -> None:
+        """Once: rounded corners and hide on focus loss (the form's Deactivate)."""
+        if self._native_ready:
             return
         try:
-            from .app import _cantos_arredondados
+            from .app import _round_corners
 
-            _cantos_arredondados(self.janela)
-            self.janela.native.Deactivate += lambda *_: self.esconder()
-            self._nativo_configurado = True
+            _round_corners(self.window)
+            self.window.native.Deactivate += lambda *_: self.hide()
+            self._native_ready = True
         except Exception:
-            log.debug("Configuração nativa do painel indisponível", exc_info=True)
+            log.debug("Native panel setup unavailable", exc_info=True)

@@ -1,115 +1,115 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>Mothlit</title>
-  <link rel="stylesheet" href="estilo.css">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="app" id="app">
 
-  <header class="titulo pywebview-drag-region">
+  <header class="titlebar pywebview-drag-region">
     <img class="logo pywebview-drag-region" src="moth.svg" alt="">
-    <span class="nome pywebview-drag-region">Mothlit</span>
-    <div class="acoes-janela">
-      <button class="botao-icone" id="btn-config" title="Configurações" data-icone="ajustes"></button>
-      <button class="botao-icone" id="btn-min" title="Minimizar para a bandeja" data-icone="menos"></button>
-      <button class="botao-icone" id="btn-fechar" title="Fechar" data-icone="fechar"></button>
+    <span class="app-name pywebview-drag-region">Mothlit</span>
+    <div class="window-actions">
+      <button class="icon-button" id="btn-settings" title="Settings" data-icon="settings"></button>
+      <button class="icon-button" id="btn-min" title="Minimize to tray" data-icon="minus"></button>
+      <button class="icon-button" id="btn-close" title="Close" data-icon="close"></button>
     </div>
   </header>
 
-  <nav class="abas" id="abas">
-    <span class="indicador"></span>
-    <button data-alvo="clima" class="ativa">Clima</button>
-    <button data-alvo="luz">Luz</button>
+  <nav class="tabs" id="tabs">
+    <span class="indicator"></span>
+    <button data-target="climate" class="active">Climate</button>
+    <button data-target="light">Light</button>
   </nav>
 
-  <main class="paginas">
+  <main class="pages">
 
-    <!-- ===================== Clima ===================== -->
-    <section class="pagina ativa" id="pg-clima">
-      <article class="card desligado" id="card-ar">
-        <div class="card-topo">
+    <!-- ===================== Climate ===================== -->
+    <section class="page active" id="pg-climate">
+      <article class="card off" id="card-ac">
+        <div class="card-header">
           <div>
-            <h2 id="ar-nome">Ar-condicionado</h2>
-            <p class="situacao" id="ar-situacao">Conectando…</p>
+            <h2 id="ac-name">Air conditioner</h2>
+            <p class="state-text" id="ac-state">Connecting…</p>
           </div>
-          <button class="energia" id="ar-energia" title="Ligar/desligar" data-icone="energia"></button>
+          <button class="power" id="ac-power" title="Turn on/off" data-icon="power"></button>
         </div>
 
-        <div class="ilustracao-ar">
+        <div class="ac-art">
           <svg viewBox="0 0 300 170" aria-hidden="true">
             <defs>
-              <linearGradient id="g-corpo" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="g-body" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0" stop-color="#fafafa"/>
                 <stop offset="1" stop-color="#d4d4d8"/>
               </linearGradient>
-              <linearGradient id="g-vento" gradientUnits="userSpaceOnUse" x1="0" y1="78" x2="0" y2="168">
+              <linearGradient id="g-wind" gradientUnits="userSpaceOnUse" x1="0" y1="78" x2="0" y2="168">
                 <stop offset="0" stop-color="#e4e4e7" stop-opacity=".6"/>
                 <stop offset="1" stop-color="#e4e4e7" stop-opacity="0"/>
               </linearGradient>
-              <filter id="sombra" x="-20%" y="-30%" width="140%" height="190%">
+              <filter id="shadow" x="-20%" y="-30%" width="140%" height="190%">
                 <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000" flood-opacity=".6"/>
               </filter>
             </defs>
-            <g class="vento" id="ar-vento"></g>
-            <rect x="20" y="8" width="260" height="72" rx="16" fill="url(#g-corpo)" filter="url(#sombra)"/>
+            <g class="airflow" id="ac-airflow"></g>
+            <rect x="20" y="8" width="260" height="72" rx="16" fill="url(#g-body)" filter="url(#shadow)"/>
             <rect x="34" y="60" width="232" height="9" rx="4.5" fill="#18181b"/>
             <rect x="38" y="62.5" width="224" height="2.5" rx="1.25" fill="#3f3f46"/>
             <circle class="led" cx="40" cy="26" r="2.2"/>
-            <text class="visor" id="ar-visor" x="258" y="38" text-anchor="end"></text>
+            <text class="display" id="ac-display" x="258" y="38" text-anchor="end"></text>
           </svg>
         </div>
 
-        <div class="temperaturas">
-          <div class="alvo"><span id="ar-alvo">–</span><small>°C</small></div>
-          <div class="ambiente">
-            <span class="rotulo">No ambiente</span>
-            <span id="ar-ambiente">– °C</span>
+        <div class="temps">
+          <div class="target"><span id="ac-target">–</span><small>°C</small></div>
+          <div class="ambient">
+            <span class="label">In the room</span>
+            <span id="ac-room">– °C</span>
           </div>
         </div>
 
-        <div class="ajustavel">
-          <div class="controle-alvo">
-            <button class="botao-icone" id="ar-menos" data-icone="menos" title="Diminuir"></button>
-            <input type="range" class="slider" id="ar-slider" min="16" max="30" step="1" value="16">
-            <button class="botao-icone" id="ar-mais" data-icone="mais" title="Aumentar"></button>
+        <div class="adjustable">
+          <div class="target-control">
+            <button class="icon-button" id="ac-minus" data-icon="minus" title="Decrease"></button>
+            <input type="range" class="slider" id="ac-slider" min="16" max="30" step="1" value="16">
+            <button class="icon-button" id="ac-plus" data-icon="plus" title="Increase"></button>
           </div>
-          <div class="limites"><span id="ar-min">16°</span><span id="ar-max">30°</span></div>
+          <div class="limits"><span id="ac-min">16°</span><span id="ac-max">30°</span></div>
 
-          <div class="blocos">
-            <button class="bloco" data-campo="modo"><span class="bloco-icone" data-icone="floco"></span>
-              <span class="seta" data-icone="seta"></span><span class="bloco-titulo">Modo</span><span class="bloco-valor">–</span></button>
-            <button class="bloco" data-campo="ventilador"><span class="bloco-icone" data-icone="ventilador"></span>
-              <span class="seta" data-icone="seta"></span><span class="bloco-titulo">Ventilação</span><span class="bloco-valor">–</span></button>
-            <button class="bloco" data-campo="opcional"><span class="bloco-icone" data-icone="lua"></span>
-              <span class="seta" data-icone="seta"></span><span class="bloco-titulo">Dormir</span><span class="bloco-valor">–</span></button>
-            <button class="bloco" data-campo="oscilacao"><span class="bloco-icone" data-icone="oscilar"></span>
-              <span class="seta" data-icone="seta"></span><span class="bloco-titulo">Oscilação</span><span class="bloco-valor">–</span></button>
+          <div class="tiles">
+            <button class="tile" data-field="mode"><span class="tile-icon" data-icon="snowflake"></span>
+              <span class="chevron" data-icon="chevron"></span><span class="tile-title">Mode</span><span class="tile-value">–</span></button>
+            <button class="tile" data-field="fan"><span class="tile-icon" data-icon="fan"></span>
+              <span class="chevron" data-icon="chevron"></span><span class="tile-title">Fan</span><span class="tile-value">–</span></button>
+            <button class="tile" data-field="optional"><span class="tile-icon" data-icon="moon"></span>
+              <span class="chevron" data-icon="chevron"></span><span class="tile-title">Sleep</span><span class="tile-value">–</span></button>
+            <button class="tile" data-field="oscillation"><span class="tile-icon" data-icon="swing"></span>
+              <span class="chevron" data-icon="chevron"></span><span class="tile-title">Swing</span><span class="tile-value">–</span></button>
           </div>
         </div>
-        <p class="dica" id="ar-dica">Ligue o aparelho para ajustar temperatura e ventilação.</p>
+        <p class="hint" id="ac-hint">Turn the unit on to adjust temperature and fan.</p>
       </article>
     </section>
 
-    <!-- ===================== Luz ===================== -->
-    <section class="pagina" id="pg-luz">
-      <article class="card" id="card-luz">
-        <div class="card-topo">
+    <!-- ===================== Light ===================== -->
+    <section class="page" id="pg-light">
+      <article class="card" id="card-light">
+        <div class="card-header">
           <div>
-            <h2 id="luz-nome">Lâmpada</h2>
-            <p class="situacao" id="luz-situacao">Conectando…</p>
+            <h2 id="light-name">Lamp</h2>
+            <p class="state-text" id="light-state">Connecting…</p>
           </div>
-          <button class="energia" id="luz-energia" title="Ligar/desligar" data-icone="energia"></button>
+          <button class="power" id="light-power" title="Turn on/off" data-icon="power"></button>
         </div>
 
-        <div class="quarto apagado" id="quarto">
+        <div class="room dark" id="room">
           <svg viewBox="0 0 360 200" aria-hidden="true">
             <defs>
-              <radialGradient id="g-luz" gradientUnits="userSpaceOnUse" cx="180" cy="36" r="250">
-                <stop offset="0" class="luz-0"/>
-                <stop offset=".45" class="luz-1"/>
-                <stop offset="1" class="luz-2"/>
+              <radialGradient id="g-glow" gradientUnits="userSpaceOnUse" cx="180" cy="36" r="250">
+                <stop offset="0" class="glow-0"/>
+                <stop offset=".45" class="glow-1"/>
+                <stop offset="1" class="glow-2"/>
               </radialGradient>
             </defs>
             <rect width="360" height="200" fill="#18181b"/>
@@ -123,83 +123,83 @@
             </g>
             <polygon points="120,150 240,150 262,178 98,178" fill="#323238"/>
             <rect x="98" y="178" width="164" height="8" fill="#26262b"/>
-            <rect class="luz" width="360" height="200" fill="url(#g-luz)"/>
-            <polygon class="painel" points="150,26 210,26 222,42 138,42"/>
+            <rect class="glow" width="360" height="200" fill="url(#g-glow)"/>
+            <polygon class="fixture" points="150,26 210,26 222,42 138,42"/>
           </svg>
         </div>
 
-        <div class="linha-brilho">
-          <span class="icone-suave" data-icone="sol"></span>
-          <input type="range" class="slider" id="luz-brilho" min="1" max="100" step="1" value="1">
-          <span class="valor" id="luz-brilho-valor">–</span>
+        <div class="brightness-row">
+          <span class="muted-icon" data-icon="sun"></span>
+          <input type="range" class="slider" id="light-brightness" min="1" max="100" step="1" value="1">
+          <span class="value" id="light-brightness-value">–</span>
         </div>
       </article>
 
-      <nav class="abas abas-sub" id="abas-luz">
-        <span class="indicador"></span>
-        <button data-alvo="cores" class="ativa">Cores</button>
-        <button data-alvo="branco">Branco</button>
+      <nav class="tabs subtabs" id="light-tabs">
+        <span class="indicator"></span>
+        <button data-target="colors" class="active">Colors</button>
+        <button data-target="white">White</button>
       </nav>
 
-      <div class="subpaginas">
-        <div class="subpagina ativa" id="sub-cores">
-          <div class="disco" id="disco"><span class="marca" id="disco-marca"></span></div>
+      <div class="subpages">
+        <div class="subpage active" id="sub-colors">
+          <div class="wheel" id="wheel"><span class="handle" id="wheel-handle"></span></div>
         </div>
-        <div class="subpagina" id="sub-branco">
-          <div class="legenda"><span>Quente</span><span>Frio</span></div>
-          <input type="range" class="slider slider-temp" id="luz-temp" min="0" max="100" step="1" value="50">
+        <div class="subpage" id="sub-white">
+          <div class="legend"><span>Warm</span><span>Cool</span></div>
+          <input type="range" class="slider slider-temp" id="light-temp" min="0" max="100" step="1" value="50">
           <div class="presets">
-            <button data-temp="0">Quente</button>
-            <button data-temp="50">Neutro</button>
-            <button data-temp="100">Frio</button>
+            <button data-temp="0">Warm</button>
+            <button data-temp="50">Neutral</button>
+            <button data-temp="100">Cool</button>
           </div>
         </div>
       </div>
     </section>
   </main>
 
-  <footer class="rodape">
+  <footer class="footer">
     <span class="status" id="status"></span>
-    <button class="botao-icone" id="btn-atualizar" title="Atualizar" data-icone="atualizar"></button>
+    <button class="icon-button" id="btn-refresh" title="Refresh" data-icon="refresh"></button>
   </footer>
 
   <div class="menu" id="menu" role="menu"></div>
 
-  <div class="folha-fundo" id="folha-fundo">
-    <div class="folha" id="folha">
-      <div class="folha-topo">
-        <h3>Configurações</h3>
-        <button class="botao-icone" id="folha-fechar" data-icone="fechar" title="Fechar"></button>
+  <div class="sheet-backdrop" id="sheet-backdrop">
+    <div class="sheet" id="sheet">
+      <div class="sheet-header">
+        <h3>Settings</h3>
+        <button class="icon-button" id="sheet-close" data-icon="close" title="Close"></button>
       </div>
-      <div class="opcoes">
-        <div class="opcao">
+      <div class="options">
+        <div class="option">
           <div>
-            <strong>Iniciar com o Windows</strong>
-            <small>Abre escondido na bandeja ao entrar no Windows</small>
+            <strong>Launch at Windows startup</strong>
+            <small>Opens hidden in the tray when you sign in to Windows</small>
           </div>
-          <button class="chave" id="pref-iniciar" role="switch" aria-checked="false" data-pref="iniciarComSistema"><span></span></button>
+          <button class="switch" id="pref-startup" role="switch" aria-checked="false" data-pref="launchAtStartup"><span></span></button>
         </div>
-        <div class="opcao">
+        <div class="option">
           <div>
-            <strong>Minimizar na bandeja ao fechar</strong>
-            <small>O × esconde o app; para sair, use o menu da bandeja</small>
+            <strong>Minimize to tray on close</strong>
+            <small>× hides the app; to quit, use the tray menu</small>
           </div>
-          <button class="chave" id="pref-bandeja" role="switch" aria-checked="false" data-pref="fecharParaBandeja"><span></span></button>
+          <button class="switch" id="pref-tray" role="switch" aria-checked="false" data-pref="closeToTray"><span></span></button>
         </div>
       </div>
-      <h4 class="folha-secao">Aparelhos</h4>
-      <dl id="folha-dados"></dl>
-      <h4 class="folha-secao">Acesso à SmartThings</h4>
-      <p class="acesso" id="acesso-st">–</p>
-      <form class="trocar-token" id="form-token" autocomplete="off">
-        <input type="password" id="novo-token" placeholder="Colar novo token pessoal (PAT)" spellcheck="false">
-        <button type="submit" id="salvar-token">Salvar</button>
+      <h4 class="sheet-section">Devices</h4>
+      <dl id="sheet-data"></dl>
+      <h4 class="sheet-section">SmartThings access</h4>
+      <p class="access" id="st-access">–</p>
+      <form class="token-form" id="token-form" autocomplete="off">
+        <input type="password" id="new-token" placeholder="Paste a new personal access token (PAT)" spellcheck="false">
+        <button type="submit" id="save-token">Save</button>
       </form>
-      <p class="folha-dica">Para reconfigurar: <code>uv run python -m mothlit setup</code></p>
+      <p class="sheet-hint">To reconfigure: <code>uv run python -m mothlit setup</code></p>
     </div>
   </div>
 </div>
-<script src="comum.js"></script>
+<script src="common.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

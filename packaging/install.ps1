@@ -1,87 +1,90 @@
 ﻿<#
 .SYNOPSIS
-    Instala o Mothlit para o usuário atual (sem administrador).
+    Installs Mothlit for the current user (no administrator).
 
 .DESCRIPTION
-    - Copia dist\Mothlit para %LOCALAPPDATA%\Programs\Mothlit (ou -Destino)
-    - Cria o atalho "Mothlit" no Menu Iniciar (a menos que -SemAtalho)
-    - Se "Iniciar com o Windows" estiver ligado, aponta o registro para o novo Mothlit.exe
-    Configuração e segredos (%APPDATA%\Mothlit e keyring) não são tocados.
+    - Copies dist\Mothlit to %LOCALAPPDATA%\Programs\Mothlit (or -Destination)
+    - Creates the "Mothlit" shortcut in the Start Menu (unless -NoShortcut)
+    - If "Launch at Windows startup" is on, points the registry to the new Mothlit.exe
+    Configuration and secrets (%APPDATA%\Mothlit and keyring) are not touched.
 
 .EXAMPLE
-    uv run pyinstaller empacotamento/mothlit.spec --noconfirm
-    powershell -ExecutionPolicy Bypass -File empacotamento\instalar.ps1
+    uv run pyinstaller packaging/mothlit.spec --noconfirm
+    powershell -ExecutionPolicy Bypass -File packaging\install.ps1
 #>
 param(
-    [string]$Destino = (Join-Path $env:LOCALAPPDATA "Programs\Mothlit"),
-    [switch]$SemAtalho
+    [string]$Destination = (Join-Path $env:LOCALAPPDATA "Programs\Mothlit"),
+    [switch]$NoShortcut
 )
 
 $ErrorActionPreference = "Stop"
 
-# Aberto com dois cliques (pai = Explorer ou o instalar.cmd), a janela fecharia antes de dar para ler.
-function Pausar {
-    $pai = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId
-    $nome = (Get-Process -Id $pai -ErrorAction SilentlyContinue).ProcessName
-    if ($nome -in @("explorer", "cmd")) { Read-Host "`nPressione Enter para fechar" | Out-Null }
+# Opened with a double click (parent = Explorer or install.cmd), the window would close before you could read it.
+function Wait-ForEnter {
+    $parent = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId
+    $name = (Get-Process -Id $parent -ErrorAction SilentlyContinue).ProcessName
+    if ($name -in @("explorer", "cmd")) { Read-Host "`nPress Enter to close" | Out-Null }
 }
 
 trap {
-    Write-Host "`nErro: $($_.Exception.Message)" -ForegroundColor Red
-    Pausar
+    Write-Host "`nError: $($_.Exception.Message)" -ForegroundColor Red
+    Wait-ForEnter
     exit 1
 }
 
-$origem = Join-Path $PSScriptRoot "..\dist\Mothlit" | Resolve-Path -ErrorAction SilentlyContinue
-if (-not $origem -or -not (Test-Path (Join-Path $origem "Mothlit.exe"))) {
-    throw "Não achei dist\Mothlit\Mothlit.exe. Rode antes: uv run pyinstaller empacotamento/mothlit.spec --noconfirm"
+$source = Join-Path $PSScriptRoot "..\dist\Mothlit" | Resolve-Path -ErrorAction SilentlyContinue
+if (-not $source -or -not (Test-Path (Join-Path $source "Mothlit.exe"))) {
+    throw "dist\Mothlit\Mothlit.exe not found. Run first: uv run pyinstaller packaging/mothlit.spec --noconfirm"
 }
 
-# O Mothlit aberto trava os arquivos: fecha só os que estão rodando a partir do destino.
-$abertos = Get-Process -Name "Mothlit", "mothlit-cli" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -and $_.Path.StartsWith($Destino, [StringComparison]::OrdinalIgnoreCase) }
-$reabrir = [bool]($abertos | Where-Object { $_.ProcessName -eq "Mothlit" })
-if ($abertos) {
-    Write-Host "Fechando o Mothlit em execução..."
-    # Pede para sair direito (o ícone some da bandeja); só força se não fechar a tempo.
-    try {
-        $sair = [System.Threading.EventWaitHandle]::OpenExisting("Local\Mothlit.Sair")
-        [void]$sair.Set()
-        $sair.Dispose()
-    } catch { }
-    $abertos | Wait-Process -Timeout 8 -ErrorAction SilentlyContinue
-    $abertos | Where-Object { -not $_.HasExited } | Stop-Process -Force
+# A running Mothlit locks the files: close only the ones running from the destination.
+$running = Get-Process -Name "Mothlit", "mothlit-cli" -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -and $_.Path.StartsWith($Destination, [StringComparison]::OrdinalIgnoreCase) }
+$reopen = [bool]($running | Where-Object { $_.ProcessName -eq "Mothlit" })
+if ($running) {
+    Write-Host "Closing the running Mothlit..."
+    # Ask it to quit cleanly (the tray icon goes away); only force it if it does not close in time.
+    # "Mothlit.Sair" is the event name used by versions before the English rename.
+    foreach ($eventName in @("Local\Mothlit.Quit", "Local\Mothlit.Sair")) {
+        try {
+            $quit = [System.Threading.EventWaitHandle]::OpenExisting($eventName)
+            [void]$quit.Set()
+            $quit.Dispose()
+        } catch { }
+    }
+    $running | Wait-Process -Timeout 8 -ErrorAction SilentlyContinue
+    $running | Where-Object { -not $_.HasExited } | Stop-Process -Force
     Start-Sleep -Milliseconds 500
 }
 
-Write-Host "Copiando para $Destino ..."
-New-Item -ItemType Directory -Force -Path $Destino | Out-Null
-# /MIR deixa o destino idêntico ao build (remove arquivos de versões antigas)
-robocopy $origem $Destino /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
-if ($LASTEXITCODE -ge 8) { throw "Falha ao copiar (robocopy $LASTEXITCODE)." }
-$exe = Join-Path $Destino "Mothlit.exe"
+Write-Host "Copying to $Destination ..."
+New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+# /MIR makes the destination identical to the build (removes files from old versions)
+robocopy $source $Destination /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "Copy failed (robocopy $LASTEXITCODE)." }
+$exe = Join-Path $Destination "Mothlit.exe"
 
-if (-not $SemAtalho) {
+if (-not $NoShortcut) {
     $menu = Join-Path ([Environment]::GetFolderPath("Programs")) "Mothlit.lnk"
-    $atalho = (New-Object -ComObject WScript.Shell).CreateShortcut($menu)
-    $atalho.TargetPath = $exe
-    $atalho.WorkingDirectory = $Destino
-    $atalho.IconLocation = "$exe,0"
-    $atalho.Description = "Controle da lâmpada e do ar-condicionado"
-    $atalho.Save()
-    Write-Host "Atalho criado no Menu Iniciar."
+    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($menu)
+    $shortcut.TargetPath = $exe
+    $shortcut.WorkingDirectory = $Destination
+    $shortcut.IconLocation = "$exe,0"
+    $shortcut.Description = "Control the lamp and the air conditioner"
+    $shortcut.Save()
+    Write-Host "Start Menu shortcut created."
 }
 
 $run = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 if (Get-ItemProperty -Path $run -Name "Mothlit" -ErrorAction SilentlyContinue) {
-    Set-ItemProperty -Path $run -Name "Mothlit" -Value "`"$exe`" --bandeja"
-    Write-Host "Iniciar com o Windows: atualizado para o executável instalado."
+    Set-ItemProperty -Path $run -Name "Mothlit" -Value "`"$exe`" --tray"
+    Write-Host "Launch at Windows startup: updated to the installed executable."
 }
 
-Write-Host "`nPronto! Mothlit instalado em $exe" -ForegroundColor Green
-if ($reabrir) {
-    Start-Process -FilePath $exe -ArgumentList "--bandeja" -WorkingDirectory $Destino
-    Write-Host "O Mothlit estava aberto: reabri na bandeja com a versão nova."
+Write-Host "`nDone! Mothlit installed at $exe" -ForegroundColor Green
+if ($reopen) {
+    Start-Process -FilePath $exe -ArgumentList "--tray" -WorkingDirectory $Destination
+    Write-Host "Mothlit was open: reopened it in the tray with the new version."
 }
-if (-not $SemAtalho) { Write-Host "Abra pelo Menu Iniciar: Mothlit" }
-Pausar
+if (-not $NoShortcut) { Write-Host "Open it from the Start Menu: Mothlit" }
+Wait-ForEnter

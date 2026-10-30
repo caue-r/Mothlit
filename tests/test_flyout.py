@@ -1,66 +1,66 @@
-"""Mini painel da bandeja: abrir/fechar, sem abrir janelas de verdade."""
+"""Tray quick panel: open/close, without opening real windows."""
 
 from unittest.mock import MagicMock
 
 from mothlit.ui import flyout
-from mothlit.ui.flyout import PainelRapido
+from mothlit.ui.flyout import QuickPanel
 
 
-class Relogio:
+class Clock:
     def __init__(self):
-        self.agora = 100.0
+        self.now = 100.0
 
     def __call__(self):
-        return self.agora
+        return self.now
 
 
-def painel(monkeypatch):
-    relogio = Relogio()
-    monkeypatch.setattr(flyout.time, "monotonic", relogio)
-    monkeypatch.setattr(flyout, "posicao", lambda l, a: (10, 20))
-    p = PainelRapido.__new__(PainelRapido)  # sem criar a janela do pywebview
-    p.janela = MagicMock()
-    p.janela.native = None  # sem formulário nativo: as chamadas reais ao Windows são puladas
-    p.visivel = False
-    p._escondido_em = 0.0
-    p._nativo_configurado = True
-    return p, relogio
+def panel(monkeypatch):
+    clock = Clock()
+    monkeypatch.setattr(flyout.time, "monotonic", clock)
+    monkeypatch.setattr(flyout, "position", lambda w, h: (10, 20))
+    p = QuickPanel.__new__(QuickPanel)  # without creating the pywebview window
+    p.window = MagicMock()
+    p.window.native = None  # no native form: the real Windows calls are skipped
+    p.visible = False
+    p._hidden_at = 0.0
+    p._native_ready = True
+    return p, clock
 
 
-def test_clique_abre_e_clique_de_novo_fecha(monkeypatch):
-    p, _ = painel(monkeypatch)
-    p.alternar()
-    assert p.visivel
-    p.janela.show.assert_called_once()
-    p.janela.move.assert_called_with(10, 20)
-    p.janela.evaluate_js.assert_called_with("window.aoMostrar && aoMostrar()")
-    p.alternar()
-    assert not p.visivel
-    p.janela.hide.assert_called_once()
+def test_click_opens_and_clicking_again_closes(monkeypatch):
+    p, _ = panel(monkeypatch)
+    p.toggle()
+    assert p.visible
+    p.window.show.assert_called_once()
+    p.window.move.assert_called_with(10, 20)
+    p.window.evaluate_js.assert_called_with("window.onShow && onShow()")
+    p.toggle()
+    assert not p.visible
+    p.window.hide.assert_called_once()
 
 
-def test_clique_no_icone_que_fechou_o_painel_nao_reabre(monkeypatch):
-    p, relogio = painel(monkeypatch)
-    p.alternar()
-    p.esconder()  # perdeu o foco porque o usuário clicou no ícone da bandeja...
-    relogio.agora += 0.05
-    p.alternar()  # ...e o clique chega logo depois: deve continuar fechado
-    assert not p.visivel
-    relogio.agora += 1
-    p.alternar()  # um clique de verdade, mais tarde, abre
-    assert p.visivel
+def test_click_on_the_icon_that_closed_the_panel_does_not_reopen(monkeypatch):
+    p, clock = panel(monkeypatch)
+    p.toggle()
+    p.hide()  # lost focus because the user clicked the tray icon...
+    clock.now += 0.05
+    p.toggle()  # ...and the click arrives right after: it must stay closed
+    assert not p.visible
+    clock.now += 1
+    p.toggle()  # a real click, later, opens it
+    assert p.visible
 
 
-def test_esconder_duas_vezes_nao_duplica(monkeypatch):
-    p, _ = painel(monkeypatch)
-    p.alternar()
-    p.esconder()
-    p.esconder()  # JS blur + Deactivate do Windows chegam juntos
-    p.janela.hide.assert_called_once()
+def test_hiding_twice_does_not_duplicate(monkeypatch):
+    p, _ = panel(monkeypatch)
+    p.toggle()
+    p.hide()
+    p.hide()  # JS blur + Windows Deactivate arrive together
+    p.window.hide.assert_called_once()
 
 
-def test_moldura_e_posicao_dao_numeros_inteiros():
-    largura, altura = flyout._moldura()
-    x, y = flyout.posicao(flyout.LARGURA, flyout.ALTURA)
-    assert all(isinstance(v, int) for v in (largura, altura, x, y))
-    assert largura >= 0 and altura >= 0
+def test_frame_and_position_are_integers():
+    width, height = flyout._frame()
+    x, y = flyout.position(flyout.WIDTH, flyout.HEIGHT)
+    assert all(isinstance(v, int) for v in (width, height, x, y))
+    assert width >= 0 and height >= 0

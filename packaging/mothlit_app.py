@@ -1,4 +1,4 @@
-"""Ponto de entrada do executável (o PyInstaller precisa de um script, não de `python -m`)."""
+"""Executable entry point (PyInstaller needs a script, not `python -m`)."""
 
 import sys
 

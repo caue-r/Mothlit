@@ -1,7 +1,7 @@
-"""Configuração: valores não sensíveis no .env, segredos no keyring.
+"""Configuration: non-sensitive values in the .env, secrets in the keyring.
 
-O .env é procurado primeiro na pasta atual (útil no desenvolvimento) e depois
-em %APPDATA%\\Mothlit\\.env, que é onde o `setup` grava.
+The .env is looked up first in the current folder (handy during development) and then
+in %APPDATA%\\Mothlit\\.env, which is where `setup` writes it.
 """
 
 import json
@@ -17,168 +17,226 @@ import keyring
 import keyring.errors
 from dotenv import load_dotenv
 
-SERVICO_KEYRING = "mothlit"
+KEYRING_SERVICE = "mothlit"
 
-# Nomes das entradas no keyring
-SEGREDO_LAMPADA_KEY = "lampada_local_key"
-SEGREDO_SMARTTHINGS_PAT = "smartthings_pat"
+# Keyring entry names
+SECRET_LAMP_KEY = "lamp_local_key"
+SECRET_SMARTTHINGS_PAT = "smartthings_pat"
 
-
-class ErroConfiguracao(Exception):
-    """Configuração ausente ou inválida."""
+log = logging.getLogger(__name__)
 
 
-def pasta_config() -> Path:
+class ConfigError(Exception):
+    """Missing or invalid configuration."""
+
+
+def config_dir() -> Path:
     base = os.environ.get("APPDATA") or str(Path.home())
     return Path(base) / "Mothlit"
 
 
-def caminho_env() -> Path:
-    return pasta_config() / ".env"
+def env_path() -> Path:
+    return config_dir() / ".env"
 
 
 @dataclass
 class Config:
-    lampada_id: str
-    lampada_ip: str
-    lampada_versao: float
-    ar_device_id: str
-    lampada_nome: str = "Lâmpada"
+    lamp_id: str
+    lamp_ip: str
+    lamp_version: float
+    ac_device_id: str
+    lamp_name: str = "Lamp"
 
 
-def carregar() -> Config:
-    # load_dotenv não sobrescreve variáveis já definidas: o .env local vence.
+def load() -> Config:
+    # load_dotenv does not override variables that are already set: the local .env wins.
     load_dotenv(Path.cwd() / ".env")
-    load_dotenv(caminho_env())
+    load_dotenv(env_path())
     try:
-        versao = float(os.environ.get("LAMPADA_VERSAO", "3.3"))
+        version = float(os.environ.get("LAMP_VERSION", "3.3"))
     except ValueError as e:
-        raise ErroConfiguracao("LAMPADA_VERSAO inválida no .env (ex.: 3.3, 3.5).") from e
+        raise ConfigError("Invalid LAMP_VERSION in the .env (e.g. 3.3, 3.5).") from e
     return Config(
-        lampada_id=os.environ.get("LAMPADA_ID", ""),
-        lampada_ip=os.environ.get("LAMPADA_IP", ""),
-        lampada_versao=versao,
-        ar_device_id=os.environ.get("SMARTTHINGS_DEVICE_ID", ""),
-        lampada_nome=os.environ.get("LAMPADA_NOME") or "Lâmpada",
+        lamp_id=os.environ.get("LAMP_ID", ""),
+        lamp_ip=os.environ.get("LAMP_IP", ""),
+        lamp_version=version,
+        ac_device_id=os.environ.get("SMARTTHINGS_DEVICE_ID", ""),
+        lamp_name=os.environ.get("LAMP_NAME") or "Lamp",
     )
 
 
-def salvar_env(valores: dict[str, str]) -> Path:
-    """Mescla `valores` no .env do usuário e devolve o caminho gravado."""
-    caminho = caminho_env()
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    atuais: dict[str, str] = {}
-    if caminho.exists():
-        for linha in caminho.read_text(encoding="utf-8").splitlines():
-            if "=" in linha and not linha.lstrip().startswith("#"):
-                chave, _, valor = linha.partition("=")
-                atuais[chave.strip()] = valor.strip()
-    atuais.update(valores)
-    caminho.write_text("".join(f"{k}={v}\n" for k, v in atuais.items()), encoding="utf-8")
-    return caminho
+def save_env(values: dict[str, str]) -> Path:
+    """Merges `values` into the user's .env and returns the path written."""
+    path = env_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    current = _read_env(path)
+    current.update(values)
+    _write_env(path, current)
+    return path
 
 
-# --- log em arquivo (o .exe não tem console) ---
+def _read_env(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                key, _, value = line.partition("=")
+                values[key.strip()] = value.strip()
+    return values
 
 
-def configurar_log() -> Path:
-    """Log em %APPDATA%\\Mothlit\\mothlit.log, com rotação (até ~3 MB). Erros não tratados também vão para lá."""
-    caminho = pasta_config() / "mothlit.log"
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    arquivo = RotatingFileHandler(caminho, maxBytes=1_000_000, backupCount=2, encoding="utf-8")
-    arquivo.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(threadName)s] %(name)s: %(message)s"))
-    raiz = logging.getLogger()
-    raiz.handlers[:] = [arquivo]
-    raiz.setLevel(logging.INFO)
-    # bibliotecas falantes (o tinytuya em DEBUG chega a registrar chaves de sessão)
-    for nome in ("httpx", "httpcore", "tinytuya", "urllib3", "pywebview", "PIL"):
-        logging.getLogger(nome).setLevel(logging.WARNING)
-
-    def registrar(tipo, valor, rastro, thread=None):
-        logging.getLogger("mothlit").critical("Erro não tratado%s", f" na thread {thread}" if thread else "",
-                                              exc_info=(tipo, valor, rastro))
-
-    sys.excepthook = registrar
-    threading.excepthook = lambda a: registrar(a.exc_type, a.exc_value, a.exc_traceback, a.thread.name)
-    return caminho
+def _write_env(path: Path, values: dict[str, str]) -> None:
+    path.write_text("".join(f"{k}={v}\n" for k, v in values.items()), encoding="utf-8")
 
 
-# --- preferências do app (não sensíveis) ---
-
-PREFERENCIAS_PADRAO = {"fechar_para_bandeja": False}
+# --- file log (the .exe has no console) ---
 
 
-def caminho_preferencias() -> Path:
-    return pasta_config() / "preferencias.json"
+def setup_logging() -> Path:
+    """Log in %APPDATA%\\Mothlit\\mothlit.log, rotated (up to ~3 MB). Unhandled errors go there too."""
+    path = config_dir() / "mothlit.log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(path, maxBytes=1_000_000, backupCount=2, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(threadName)s] %(name)s: %(message)s"))
+    root = logging.getLogger()
+    root.handlers[:] = [handler]
+    root.setLevel(logging.INFO)
+    # chatty libraries (tinytuya at DEBUG even logs session keys)
+    for name in ("httpx", "httpcore", "tinytuya", "urllib3", "pywebview", "PIL"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+    def record(kind, value, traceback, thread=None):
+        logging.getLogger("mothlit").critical("Unhandled error%s", f" in thread {thread}" if thread else "",
+                                              exc_info=(kind, value, traceback))
+
+    sys.excepthook = record
+    threading.excepthook = lambda a: record(a.exc_type, a.exc_value, a.exc_traceback, a.thread.name)
+    return path
 
 
-def ler_preferencias() -> dict:
-    """Preferências salvas, completadas com os padrões. Arquivo ausente ou corrompido = padrões."""
+# --- app preferences (non-sensitive) ---
+
+DEFAULT_PREFERENCES = {"close_to_tray": False}
+
+
+def preferences_path() -> Path:
+    return config_dir() / "preferences.json"
+
+
+def read_preferences() -> dict:
+    """Saved preferences, filled in with the defaults. Missing or corrupted file = defaults."""
     try:
-        salvas = json.loads(caminho_preferencias().read_text(encoding="utf-8"))
+        saved = json.loads(preferences_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        salvas = {}
-    return {**PREFERENCIAS_PADRAO, **{k: v for k, v in salvas.items() if k in PREFERENCIAS_PADRAO}}
+        saved = {}
+    return {**DEFAULT_PREFERENCES, **{k: v for k, v in saved.items() if k in DEFAULT_PREFERENCES}}
 
 
-def salvar_preferencia(nome: str, valor) -> dict:
-    if nome not in PREFERENCIAS_PADRAO:
-        raise ErroConfiguracao(f"Preferência desconhecida: {nome}")
-    preferencias = {**ler_preferencias(), nome: valor}
-    caminho = caminho_preferencias()
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    caminho.write_text(json.dumps(preferencias, indent=2), encoding="utf-8")
-    return preferencias
+def save_preference(name: str, value) -> dict:
+    if name not in DEFAULT_PREFERENCES:
+        raise ConfigError(f"Unknown preference: {name}")
+    preferences = {**read_preferences(), name: value}
+    path = preferences_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(preferences, indent=2), encoding="utf-8")
+    return preferences
 
 
-SEGREDO_SMARTTHINGS_OAUTH = "smartthings_oauth"
+SECRET_SMARTTHINGS_OAUTH = "smartthings_oauth"
 
-# O Gerenciador de Credenciais do Windows aceita até 2560 bytes por segredo (UTF-16: ~1280
-# caracteres). Valores maiores (tokens OAuth podem ser longos) são gravados em pedaços.
-_PEDACO = 1000
-
-
-def salvar_segredo_json(nome: str, dados: dict) -> None:
-    texto = json.dumps(dados, separators=(",", ":"))
-    pedacos = [texto[i : i + _PEDACO] for i in range(0, len(texto), _PEDACO)] or [""]
-    antigos = int(ler_segredo(f"{nome}#n") or 0)
-    for i, pedaco in enumerate(pedacos):
-        salvar_segredo(f"{nome}#{i}", pedaco)
-    salvar_segredo(f"{nome}#n", str(len(pedacos)))  # por último: só "vale" depois de tudo gravado
-    for i in range(len(pedacos), antigos):
-        apagar_segredo(f"{nome}#{i}")
+# Windows Credential Manager accepts up to 2560 bytes per secret (UTF-16: ~1280
+# characters). Larger values (OAuth tokens can be long) are stored in chunks.
+_CHUNK = 1000
 
 
-def ler_segredo_json(nome: str) -> dict | None:
-    total = ler_segredo(f"{nome}#n")
+def save_secret_json(name: str, data: dict) -> None:
+    text = json.dumps(data, separators=(",", ":"))
+    chunks = [text[i : i + _CHUNK] for i in range(0, len(text), _CHUNK)] or [""]
+    old = int(read_secret(f"{name}#n") or 0)
+    for i, chunk in enumerate(chunks):
+        save_secret(f"{name}#{i}", chunk)
+    save_secret(f"{name}#n", str(len(chunks)))  # last: it only "counts" once everything is written
+    for i in range(len(chunks), old):
+        delete_secret(f"{name}#{i}")
+
+
+def read_secret_json(name: str) -> dict | None:
+    total = read_secret(f"{name}#n")
     if not total:
         return None
-    partes = [ler_segredo(f"{nome}#{i}") for i in range(int(total))]
-    if any(p is None for p in partes):
+    parts = [read_secret(f"{name}#{i}") for i in range(int(total))]
+    if any(p is None for p in parts):
         return None
     try:
-        return json.loads("".join(partes))
+        return json.loads("".join(parts))
     except ValueError:
         return None
 
 
-def apagar_segredo_json(nome: str) -> None:
-    total = int(ler_segredo(f"{nome}#n") or 0)
-    apagar_segredo(f"{nome}#n")
+def delete_secret_json(name: str) -> None:
+    total = int(read_secret(f"{name}#n") or 0)
+    delete_secret(f"{name}#n")
     for i in range(total):
-        apagar_segredo(f"{nome}#{i}")
+        delete_secret(f"{name}#{i}")
 
 
-def apagar_segredo(nome: str) -> None:
+def delete_secret(name: str) -> None:
     try:
-        keyring.delete_password(SERVICO_KEYRING, nome)
+        keyring.delete_password(KEYRING_SERVICE, name)
     except keyring.errors.PasswordDeleteError:
         pass
 
 
-def ler_segredo(nome: str) -> str | None:
-    return keyring.get_password(SERVICO_KEYRING, nome)
+def read_secret(name: str) -> str | None:
+    return keyring.get_password(KEYRING_SERVICE, name)
 
 
-def salvar_segredo(nome: str, valor: str) -> None:
-    keyring.set_password(SERVICO_KEYRING, nome, valor)
+def save_secret(name: str, value: str) -> None:
+    keyring.set_password(KEYRING_SERVICE, name, value)
+
+
+# --- settings saved by older versions, which used Portuguese names ---
+
+_LEGACY_ENV_KEYS = {
+    "LAMPADA_ID": "LAMP_ID",
+    "LAMPADA_IP": "LAMP_IP",
+    "LAMPADA_VERSAO": "LAMP_VERSION",
+    "LAMPADA_NOME": "LAMP_NAME",
+}
+_LEGACY_LAMP_KEY = "lampada_local_key"
+_LEGACY_PREFERENCES = ("preferencias.json", {"fechar_para_bandeja": "close_to_tray"})
+_LEGACY_OAUTH_FIELDS = {"expira_em": "expires_at"}
+
+
+def migrate_legacy() -> None:
+    """Renames settings saved by older versions. Idempotent: cheap to call on every start."""
+    try:
+        path = env_path()
+        values = _read_env(path)
+        if any(old in values for old in _LEGACY_ENV_KEYS):
+            _write_env(path, {_LEGACY_ENV_KEYS.get(k, k): v for k, v in values.items()})
+
+        old_key = read_secret(_LEGACY_LAMP_KEY)
+        if old_key is not None:
+            if read_secret(SECRET_LAMP_KEY) is None:
+                save_secret(SECRET_LAMP_KEY, old_key)
+            delete_secret(_LEGACY_LAMP_KEY)
+
+        oauth = read_secret_json(SECRET_SMARTTHINGS_OAUTH)
+        if oauth and any(old in oauth for old in _LEGACY_OAUTH_FIELDS):
+            save_secret_json(SECRET_SMARTTHINGS_OAUTH, {_LEGACY_OAUTH_FIELDS.get(k, k): v for k, v in oauth.items()})
+
+        file_name, keys = _LEGACY_PREFERENCES
+        old_prefs = config_dir() / file_name
+        if old_prefs.exists():
+            if not preferences_path().exists():
+                try:
+                    saved = json.loads(old_prefs.read_text(encoding="utf-8"))
+                except ValueError:
+                    saved = {}
+                for old, new in keys.items():
+                    if old in saved:
+                        save_preference(new, saved[old])
+            old_prefs.unlink()
+    except Exception:  # never blocks startup: at worst the user runs setup again
+        log.exception("Could not migrate the settings from an older version")

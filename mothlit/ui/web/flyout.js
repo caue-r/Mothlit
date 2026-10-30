@@ -1,166 +1,166 @@
 "use strict";
-/* Mothlit: mini painel da bandeja (só o essencial). Usa comum.js. */
+/* Mothlit: tray quick panel (just the essentials). Uses common.js. */
 
-const RELER_MS = { ar: 2500, luz: 800 };
-const JANELA_INTERACAO_MS = 4000;
-const estado = { ar: null, luz: null };
-const ultimaInteracao = { ar: 0, luz: 0 };
-const painel = $("#painel");
-const brilho = $("#fly-brilho");
+const REREAD_MS = { ac: 2500, light: 800 };
+const INTERACTION_WINDOW_MS = 4000;
+const state = { ac: null, light: null };
+const lastInteraction = { ac: 0, light: 0 };
+const panel = $("#panel");
+const brightness = $("#fly-brightness");
 
-const formatar = v => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+const fmt = v => (Number.isInteger(v) ? String(v) : v.toFixed(1));
 
-// ---------------------------------------------------------------- leitura e comandos
+// ---------------------------------------------------------------- reading and commands
 
-async function ler(qual) {
-  const r = await chamar(qual === "ar" ? "estado_ar" : "estado_luz");
-  const secao = $(qual === "ar" ? "#fly-ar" : "#fly-luz");
+async function read(which) {
+  const r = await call(which === "ac" ? "ac_state" : "light_state");
+  const section = $(which === "ac" ? "#fly-ac" : "#fly-light");
   if (!r.ok) {
-    secao.classList.add("offline");
-    situacao(qual, r.configurado === false ? "Não configurado" : "Sem conexão", r.configurado !== false);
+    section.classList.add("offline");
+    setStateText(which, r.configured === false ? "Not configured" : "No connection", r.configured !== false);
     return;
   }
-  secao.classList.remove("offline");
-  if (Date.now() - ultimaInteracao[qual] < JANELA_INTERACAO_MS) return;
-  estado[qual] = r.dados;
-  qual === "ar" ? aplicarAr(r.dados) : aplicarLuz(r.dados);
+  section.classList.remove("offline");
+  if (Date.now() - lastInteraction[which] < INTERACTION_WINDOW_MS) return;
+  state[which] = r.data;
+  which === "ac" ? applyAc(r.data) : applyLight(r.data);
 }
 
-async function comando(qual, metodo, args) {
-  ultimaInteracao[qual] = Date.now();
-  const marca = ultimaInteracao[qual];
-  const r = await chamar(metodo, ...args);
+async function command(which, method, args) {
+  lastInteraction[which] = Date.now();
+  const mark = lastInteraction[which];
+  const r = await call(method, ...args);
   if (!r.ok) {
-    situacao(qual, r.erro || "Falha ao enviar o comando.", true);
-    ultimaInteracao[qual] = 0;
-    setTimeout(() => ler(qual), 400);
+    setStateText(which, r.error || "Failed to send the command.", true);
+    lastInteraction[which] = 0;
+    setTimeout(() => read(which), 400);
     return;
   }
   setTimeout(() => {
-    if (ultimaInteracao[qual] === marca) ultimaInteracao[qual] = 0;
-    ler(qual);
-  }, RELER_MS[qual]);
+    if (lastInteraction[which] === mark) lastInteraction[which] = 0;
+    read(which);
+  }, REREAD_MS[which]);
 }
 
-function situacao(qual, texto, erro = false) {
-  const el = $(qual === "ar" ? "#fly-ar-sit" : "#fly-luz-sit");
-  el.textContent = texto;
-  el.title = texto;
-  el.classList.toggle("erro", erro);
+function setStateText(which, text, error = false) {
+  const el = $(which === "ac" ? "#fly-ac-state" : "#fly-light-state");
+  el.textContent = text;
+  el.title = text;
+  el.classList.toggle("error", error);
 }
 
-// ---------------------------------------------------------------- lâmpada
+// ---------------------------------------------------------------- lamp
 
-function corDaLuz(d) {
-  const rgb = d.modo === "colour" && d.hsv ? hsvParaRgb(d.hsv[0], d.hsv[1], 1) : corDoBranco(d.temperatura);
+function lightColor(d) {
+  const rgb = d.mode === "colour" && d.hsv ? hsvToRgb(d.hsv[0], d.hsv[1], 1) : whiteColor(d.temperature);
   return `rgb(${rgb.join(",")})`;
 }
 
-function aplicarLuz(d) {
-  $("#fly-luz-nome").textContent = d.nome || "Lâmpada";
-  situacao("luz", d.ligada ? `Ligada · ${d.modo === "colour" ? "colorida" : "branca"}` : "Desligada");
-  $("#fly-luz").classList.toggle("desligado", !d.ligada);
-  $("#fly-luz").style.setProperty("--cor-luz", corDaLuz(d));
-  $("#fly-luz-energia").classList.toggle("ligada", d.ligada);
-  deslizar(brilho, Math.max(1, d.brilho));
-  $("#fly-brilho-valor").textContent = `${d.brilho}%`;
+function applyLight(d) {
+  $("#fly-light-name").textContent = d.name || "Lamp";
+  setStateText("light", d.on ? `On · ${d.mode === "colour" ? "color" : "white"}` : "Off");
+  $("#fly-light").classList.toggle("off", !d.on);
+  $("#fly-light").style.setProperty("--light-color", lightColor(d));
+  $("#fly-light-power").classList.toggle("on", d.on);
+  slide(brightness, Math.max(1, d.brightness));
+  $("#fly-brightness-value").textContent = `${d.brightness}%`;
 }
 
-function iniciarLuz() {
-  prepararSlider(brilho);
-  $("#fly-luz-energia").addEventListener("click", () => {
-    if (!estado.luz) return;
-    const ligar = !estado.luz.ligada;
-    estado.luz.ligada = ligar;
-    aplicarLuz(estado.luz);
-    comando("luz", "luz_ligar", [ligar]);
+function initLight() {
+  prepareSlider(brightness);
+  $("#fly-light-power").addEventListener("click", () => {
+    if (!state.light) return;
+    const on = !state.light.on;
+    state.light.on = on;
+    applyLight(state.light);
+    command("light", "light_power", [on]);
   });
-  brilho.addEventListener("input", () => {
-    ultimaInteracao.luz = Date.now();
-    $("#fly-brilho-valor").textContent = `${Math.round(Number(brilho.value))}%`;
+  brightness.addEventListener("input", () => {
+    lastInteraction.light = Date.now();
+    $("#fly-brightness-value").textContent = `${Math.round(Number(brightness.value))}%`;
   });
-  brilho.addEventListener("change", () => {
-    const v = Math.round(Number(brilho.value));
-    const d = estado.luz;
-    if (d) { d.brilho = v; d.ligada = true; aplicarLuz(d); }
-    if (d && d.modo === "colour" && d.hsv) {
-      comando("luz", "luz_hsv", [d.hsv[0], d.hsv[1], v / 100]);  // mantém a cor, muda a intensidade
+  brightness.addEventListener("change", () => {
+    const v = Math.round(Number(brightness.value));
+    const d = state.light;
+    if (d) { d.brightness = v; d.on = true; applyLight(d); }
+    if (d && d.mode === "colour" && d.hsv) {
+      command("light", "light_hsv", [d.hsv[0], d.hsv[1], v / 100]);  // keeps the color, changes the intensity
     } else {
-      comando("luz", "luz_brilho", [v]);
+      command("light", "light_brightness", [v]);
     }
   });
 }
 
-// ---------------------------------------------------------------- ar-condicionado
+// ---------------------------------------------------------------- air conditioner
 
-let alvoExibido = null;
-let passo = 1;
-let faixa = [16, 30];
+let shownTarget = null;
+let step = 1;
+let range = [16, 30];
 
-function mostrarAlvo(valor) {
-  const el = $("#fly-alvo");
-  const de = alvoExibido ?? valor;
-  alvoExibido = valor;
-  animar("fly-alvo", de, valor, 360, v => { el.textContent = formatar(Math.round(v / passo) * passo); });
+function showTarget(value) {
+  const el = $("#fly-target");
+  const from = shownTarget ?? value;
+  shownTarget = value;
+  animate("fly-target", from, value, 360, v => { el.textContent = fmt(Math.round(v / step) * step); });
 }
 
-function aplicarAr(d) {
-  $("#fly-ar-nome").textContent = d.nome || "Ar-condicionado";
-  const ambiente = d.ambiente != null ? ` · ${formatar(d.ambiente)} °C no ambiente` : "";
-  situacao("ar", (d.ligado ? "Ligado" : "Desligado") + ambiente);
-  $("#fly-ar").classList.toggle("desligado", !d.ligado);
-  $("#fly-ar-energia").classList.toggle("ligada", d.ligado);
-  passo = d.faixa[2] || 1;
-  faixa = [d.faixa[0], d.faixa[1]];
-  if (d.alvo != null) mostrarAlvo(d.alvo);
+function applyAc(d) {
+  $("#fly-ac-name").textContent = d.name || "Air conditioner";
+  const room = d.room != null ? ` · ${fmt(d.room)} °C in the room` : "";
+  setStateText("ac", (d.on ? "On" : "Off") + room);
+  $("#fly-ac").classList.toggle("off", !d.on);
+  $("#fly-ac-power").classList.toggle("on", d.on);
+  step = d.range[2] || 1;
+  range = [d.range[0], d.range[1]];
+  if (d.target != null) showTarget(d.target);
 }
 
-let enviarAlvo;
-function iniciarAr() {
-  $("#fly-ar-energia").addEventListener("click", () => {
-    if (!estado.ar) return;
-    const ligar = !estado.ar.ligado;
-    estado.ar.ligado = ligar;
-    aplicarAr(estado.ar);
-    situacao("ar", ligar ? "Ligando…" : "Desligando…");
-    comando("ar", "ar_ligar", [ligar]);
+let sendTarget;
+function initAc() {
+  $("#fly-ac-power").addEventListener("click", () => {
+    if (!state.ac) return;
+    const on = !state.ac.on;
+    state.ac.on = on;
+    applyAc(state.ac);
+    setStateText("ac", on ? "Turning on…" : "Turning off…");
+    command("ac", "ac_power", [on]);
   });
-  for (const [id, direcao] of [["#fly-menos", -1], ["#fly-mais", +1]]) {
+  for (const [id, direction] of [["#fly-minus", -1], ["#fly-plus", +1]]) {
     $(id).addEventListener("click", () => {
-      if (alvoExibido == null) return;
-      ultimaInteracao.ar = Date.now();
-      const v = Math.min(faixa[1], Math.max(faixa[0], alvoExibido + direcao * passo));
-      mostrarAlvo(v);
-      clearTimeout(enviarAlvo);
-      enviarAlvo = setTimeout(() => comando("ar", "ar_temperatura", [v]), 700);  // cliques seguidos = 1 comando
+      if (shownTarget == null) return;
+      lastInteraction.ac = Date.now();
+      const v = Math.min(range[1], Math.max(range[0], shownTarget + direction * step));
+      showTarget(v);
+      clearTimeout(sendTarget);
+      sendTarget = setTimeout(() => command("ac", "ac_temperature", [v]), 700);  // consecutive clicks = 1 command
     });
   }
 }
 
-// ---------------------------------------------------------------- painel
+// ---------------------------------------------------------------- panel
 
-// O Python chama ao mostrar o painel: entra deslizando e relê os aparelhos.
-window.aoMostrar = () => {
-  painel.classList.remove("visivel");
-  void painel.offsetWidth;
-  requestAnimationFrame(() => painel.classList.add("visivel"));
-  ler("ar");
-  ler("luz");
+// Python calls this when showing the panel: it slides in and rereads the devices.
+window.onShow = () => {
+  panel.classList.remove("visible");
+  void panel.offsetWidth;
+  requestAnimationFrame(() => panel.classList.add("visible"));
+  read("ac");
+  read("light");
 };
 
-// Some ao perder o foco (clicar fora), como os painéis da bandeja do Windows.
-function esconder() {
-  painel.classList.remove("visivel");
-  chamar("esconder_flyout");
+// Hides when it loses focus (clicking outside), like the Windows tray panels.
+function hidePanel() {
+  panel.classList.remove("visible");
+  call("hide_flyout");
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  pintarIcones();
-  iniciarLuz();
-  iniciarAr();
-  $("#fly-expandir").addEventListener("click", () => chamar("abrir_completo", null));
-  $$(".fly-abrir").forEach(b => b.addEventListener("click", () => chamar("abrir_completo", b.dataset.aba)));
-  window.addEventListener("blur", esconder);
-  document.addEventListener("keydown", e => { if (e.key === "Escape") esconder(); });
+  paintIcons();
+  initLight();
+  initAc();
+  $("#fly-expand").addEventListener("click", () => call("open_full", null));
+  $$(".fly-open").forEach(b => b.addEventListener("click", () => call("open_full", b.dataset.tab)));
+  window.addEventListener("blur", hidePanel);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") hidePanel(); });
   document.addEventListener("contextmenu", e => e.preventDefault());
 });

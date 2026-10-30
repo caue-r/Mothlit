@@ -1,7 +1,8 @@
 [project]
 name = "mothlit"
 version = "0.1.0"
-description = "Controle da lâmpada Tuya e do ar-condicionado Samsung pelo PC"
+description = "Control the Tuya lamp and the Samsung air conditioner from the PC"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.28.1",

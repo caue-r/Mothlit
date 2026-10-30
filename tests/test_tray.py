@@ -1,59 +1,59 @@
 from unittest.mock import MagicMock
 
-from mothlit.tray import Bandeja
+from mothlit.tray import Tray
 
 
-def bandeja(api):
-    b = Bandeja(api, ao_abrir=MagicMock(), ao_sair=MagicMock(), ao_alterar=MagicMock())
-    b._icone = MagicMock(HAS_NOTIFICATION=True)  # não cria o ícone de verdade
-    return b
+def tray(api):
+    t = Tray(api, on_open=MagicMock(), on_quit=MagicMock(), on_change=MagicMock())
+    t._icon = MagicMock(HAS_NOTIFICATION=True)  # does not create the real icon
+    return t
 
 
-def test_rotulos_seguem_o_ultimo_estado():
+def test_labels_follow_the_last_state():
     api = MagicMock()
-    api.ultimo_ligado.side_effect = {"luz": True, "ar": None}.get
-    b = bandeja(api)
-    assert b._rotulo("luz") == "Desligar luz"
-    assert b._rotulo("ar") == "Ligar/desligar ar"
+    api.last_on.side_effect = {"light": True, "ac": None}.get
+    t = tray(api)
+    assert t._label("light") == "Turn light off"
+    assert t._label("ac") == "Turn AC on/off"
 
 
-def test_alternar_avisa_e_pede_releitura():
+def test_toggle_notifies_and_asks_for_reread():
     api = MagicMock()
-    api.alternar_ar.return_value = {"ok": True, "dados": True}
-    b = bandeja(api)
-    b._alternar("ar")
-    b._icone.notify.assert_called_with("Ar-condicionado ligado.", "Mothlit")
-    b._icone.update_menu.assert_called_once()
-    b._ao_alterar.assert_called_once()
+    api.toggle_ac.return_value = {"ok": True, "data": True}
+    t = tray(api)
+    t._toggle("ac")
+    t._icon.notify.assert_called_with("Air conditioner turned on.", "Mothlit")
+    t._icon.update_menu.assert_called_once()
+    t._on_change.assert_called_once()
 
 
-def test_erro_vira_notificacao():
+def test_error_becomes_notification():
     api = MagicMock()
-    api.alternar_luz.return_value = {"ok": False, "erro": "Lâmpada inacessível."}
-    b = bandeja(api)
-    b._alternar("luz")
-    b._icone.notify.assert_called_with("Lâmpada inacessível.", "Mothlit")
+    api.toggle_light.return_value = {"ok": False, "error": "Lamp unreachable."}
+    t = tray(api)
+    t._toggle("light")
+    t._icon.notify.assert_called_with("Lamp unreachable.", "Mothlit")
 
 
-def test_clique_esquerdo_abre_o_mini_painel():
-    abrir, clicar = MagicMock(), MagicMock()
-    b = Bandeja(MagicMock(), ao_abrir=abrir, ao_sair=MagicMock(), ao_clicar=clicar)
-    b._clicar()
-    clicar.assert_called_once()
-    abrir.assert_not_called()
-    b._abrir()  # "Abrir Mothlit" no menu do botão direito continua abrindo o app completo
-    abrir.assert_called_once()
+def test_left_click_opens_the_quick_panel():
+    open_, click = MagicMock(), MagicMock()
+    t = Tray(MagicMock(), on_open=open_, on_quit=MagicMock(), on_click=click)
+    t._click()
+    click.assert_called_once()
+    open_.assert_not_called()
+    t._open()  # "Open Mothlit" in the right-click menu still opens the full app
+    open_.assert_called_once()
 
 
-def test_sem_mini_painel_o_clique_abre_o_app():
-    abrir = MagicMock()
-    b = Bandeja(MagicMock(), ao_abrir=abrir, ao_sair=MagicMock())
-    b._clicar()
-    abrir.assert_called_once()
+def test_without_quick_panel_the_click_opens_the_app():
+    open_ = MagicMock()
+    t = Tray(MagicMock(), on_open=open_, on_quit=MagicMock())
+    t._click()
+    open_.assert_called_once()
 
 
-def test_sair_para_icone_e_fecha_janela():
-    b = bandeja(MagicMock())
-    b._sair()
-    b._icone.stop.assert_called_once()
-    b._ao_sair.assert_called_once()
+def test_quit_stops_icon_and_closes_window():
+    t = tray(MagicMock())
+    t._quit()
+    t._icon.stop.assert_called_once()
+    t._on_quit.assert_called_once()
