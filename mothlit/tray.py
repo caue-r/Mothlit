@@ -1,7 +1,7 @@
-"""Ícone na bandeja do sistema com ações rápidas (pystray).
+"""System tray icon with quick actions (pystray).
 
-O pystray roda numa thread própria (seguro no Windows). As ações que usam a rede
-rodam em outra thread, para o menu da bandeja nunca travar.
+pystray runs in its own thread (safe on Windows). Actions that use the network
+run in yet another thread, so the tray menu never freezes.
 """
 
 import ctypes
@@ -12,18 +12,18 @@ from typing import Callable
 
 import pystray
 
-from .ui import marca
+from .ui import brand
 
 log = logging.getLogger(__name__)
 
 
-class _IconeNitido(pystray.Icon):
-    """pystray.Icon que entrega ao Windows o ícone no tamanho exato da bandeja.
+class _SharpIcon(pystray.Icon):
+    """pystray.Icon that hands Windows the icon at the exact tray size.
 
-    O pystray carrega o ícone no tamanho padrão (32 px) e o Windows reduz para a bandeja
-    (16 px a 100%), o que deixa a mariposa menor e borrada. Aqui carregamos do nosso .ico
-    multi-tamanho o quadro do tamanho certo (SM_CXSMICON, que já considera o zoom da tela).
-    Se algo falhar, cai no comportamento normal do pystray.
+    pystray loads the icon at the default size (32 px) and Windows scales it down for the tray
+    (16 px at 100%), which makes the moth smaller and blurry. Here we load, from our multi-size
+    .ico, the frame of the right size (SM_CXSMICON, which already accounts for display scaling).
+    If anything fails, it falls back to pystray's normal behavior.
     """
 
     def __init__(self, *args, ico=None, **kwargs):
@@ -37,103 +37,102 @@ class _IconeNitido(pystray.Icon):
             try:
                 from pystray._util import win32
 
-                lado = ctypes.windll.user32.GetSystemMetrics(49)  # SM_CXSMICON
-                handle = win32.LoadImage(None, str(self._ico), win32.IMAGE_ICON, lado, lado, win32.LR_LOADFROMFILE)
+                side = ctypes.windll.user32.GetSystemMetrics(49)  # SM_CXSMICON
+                handle = win32.LoadImage(None, str(self._ico), win32.IMAGE_ICON, side, side, win32.LR_LOADFROMFILE)
                 if handle:
                     self._icon_handle = handle
                     return
             except Exception:
-                log.debug("Ícone nítido indisponível; usando o padrão do pystray", exc_info=True)
+                log.debug("Sharp icon unavailable; using the pystray default", exc_info=True)
         super()._assert_icon_handle()
 
 
-class Bandeja:
-    def __init__(self, api, ao_abrir: Callable[[], None], ao_sair: Callable[[], None],
-                 ao_alterar: Callable[[], None] | None = None, ao_clicar: Callable[[], None] | None = None):
-        """`api` é a mesma `ui.app.Api` usada pela janela; `ao_alterar` avisa a janela para reler o estado.
+class Tray:
+    def __init__(self, api, on_open: Callable[[], None], on_quit: Callable[[], None],
+                 on_change: Callable[[], None] | None = None, on_click: Callable[[], None] | None = None):
+        """`api` is the same `ui.app.Api` used by the window; `on_change` tells the window to reread the state.
 
-        `ao_clicar`: clique esquerdo no ícone (o mini painel). Sem ele, o clique abre o app completo.
+        `on_click`: left click on the icon (the quick panel). Without it, the click opens the full app.
         """
         self._api = api
-        self._ao_abrir = ao_abrir
-        self._ao_clicar = ao_clicar or ao_abrir
-        self._ao_sair = ao_sair
-        self._ao_alterar = ao_alterar
+        self._on_open = on_open
+        self._on_click = on_click or on_open
+        self._on_quit = on_quit
+        self._on_change = on_change
         try:
-            ico = marca.ico_bandeja()
-        except Exception:  # o ícone nítido é cosmético: nunca pode impedir o app de abrir
-            log.exception("Não consegui gerar o ícone da bandeja; usando o padrão")
+            ico = brand.tray_ico()
+        except Exception:  # the sharp icon is cosmetic: it must never stop the app from opening
+            log.exception("Could not build the tray icon; using the default")
             ico = None
-        self._icone = _IconeNitido(
+        self._icon = _SharpIcon(
             "mothlit",
-            marca.imagem_bandeja(64),
+            brand.tray_image(64),
             "Mothlit",
             ico=ico,
             menu=pystray.Menu(
-                # item padrão = clique esquerdo; invisível no menu do botão direito
-                pystray.MenuItem("Controles rápidos", self._clicar, default=True, visible=False),
-                pystray.MenuItem("Abrir Mothlit", self._abrir),
+                # default item = left click; hidden in the right-click menu
+                pystray.MenuItem("Quick controls", self._click, default=True, visible=False),
+                pystray.MenuItem("Open Mothlit", self._open),
                 pystray.Menu.SEPARATOR,
-                pystray.MenuItem(lambda _: self._rotulo("luz"), lambda: self._acao("luz")),
-                pystray.MenuItem(lambda _: self._rotulo("ar"), lambda: self._acao("ar")),
+                pystray.MenuItem(lambda _: self._label("light"), lambda: self._action("light")),
+                pystray.MenuItem(lambda _: self._label("ac"), lambda: self._action("ac")),
                 pystray.Menu.SEPARATOR,
-                pystray.MenuItem("Sair", self._sair),
+                pystray.MenuItem("Quit", self._quit),
             ),
         )
 
-    def iniciar(self) -> None:
-        threading.Thread(target=self._icone.run, name="bandeja", daemon=True).start()
+    def start(self) -> None:
+        threading.Thread(target=self._icon.run, name="tray", daemon=True).start()
 
-    def parar(self) -> None:
+    def stop(self) -> None:
         try:
-            self._icone.stop()
+            self._icon.stop()
         except Exception:
-            log.debug("Bandeja já parada", exc_info=True)
+            log.debug("Tray already stopped", exc_info=True)
 
-    def atualizar_menu(self) -> None:
-        """Recalcula os textos dinâmicos (chamar quando o estado dos aparelhos mudar)."""
+    def refresh_menu(self) -> None:
+        """Recomputes the dynamic labels (call it when the device state changes)."""
         try:
-            self._icone.update_menu()
+            self._icon.update_menu()
         except Exception:
-            log.debug("Não consegui atualizar o menu da bandeja", exc_info=True)
+            log.debug("Could not refresh the tray menu", exc_info=True)
 
     # --- menu ---
 
-    def _rotulo(self, qual: str) -> str:
-        nome = "luz" if qual == "luz" else "ar"
-        ligado = self._api.ultimo_ligado(qual)
-        if ligado is None:
-            return f"Ligar/desligar {nome}"
-        return f"Desligar {nome}" if ligado else f"Ligar {nome}"
+    def _label(self, which: str) -> str:
+        name = "light" if which == "light" else "AC"
+        on = self._api.last_on(which)
+        if on is None:
+            return f"Turn {name} on/off"
+        return f"Turn {name} off" if on else f"Turn {name} on"
 
-    def _abrir(self) -> None:
-        self._ao_abrir()
+    def _open(self) -> None:
+        self._on_open()
 
-    def _clicar(self) -> None:
-        self._ao_clicar()
+    def _click(self) -> None:
+        self._on_click()
 
-    def _sair(self) -> None:
-        self.parar()
-        self._ao_sair()
+    def _quit(self) -> None:
+        self.stop()
+        self._on_quit()
 
-    def _acao(self, qual: str) -> None:
-        threading.Thread(target=self._alternar, args=(qual,), name=f"bandeja-{qual}", daemon=True).start()
+    def _action(self, which: str) -> None:
+        threading.Thread(target=self._toggle, args=(which,), name=f"tray-{which}", daemon=True).start()
 
-    def _alternar(self, qual: str) -> None:
-        r = self._api.alternar_luz() if qual == "luz" else self._api.alternar_ar()
+    def _toggle(self, which: str) -> None:
+        r = self._api.toggle_light() if which == "light" else self._api.toggle_ac()
         if r["ok"]:
-            nome = "Lâmpada" if qual == "luz" else "Ar-condicionado"
-            genero = "a" if qual == "luz" else "o"
-            self._avisar(f"{nome} {'ligad' if r['dados'] else 'desligad'}{genero}.")
+            name = "Lamp" if which == "light" else "Air conditioner"
+            self._notify(f"{name} turned {'on' if r['data'] else 'off'}.")
         else:
-            self._avisar(r.get("erro") or "Falha ao falar com o aparelho.")
-        self.atualizar_menu()
-        if self._ao_alterar:
-            self._ao_alterar()
+            self._notify(r.get("error") or "Failed to talk to the device.")
+        self.refresh_menu()
+        if self._on_change:
+            self._on_change()
 
-    def _avisar(self, mensagem: str) -> None:
-        if self._icone.HAS_NOTIFICATION:
+    def _notify(self, message: str) -> None:
+        if self._icon.HAS_NOTIFICATION:
             try:
-                self._icone.notify(mensagem, "Mothlit")
+                self._icon.notify(message, "Mothlit")
             except Exception:
-                log.debug("Notificação falhou", exc_info=True)
+                log.debug("Notification failed", exc_info=True)

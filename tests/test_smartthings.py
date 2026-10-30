@@ -3,19 +3,19 @@ import json
 import httpx
 import pytest
 
-from mothlit.devices import ErroDispositivo
+from mothlit.devices import DeviceError
 from mothlit.devices.smartthings import AuthPAT, SmartThingsClient
 
 
-def cliente(handler, auth=None):
+def client(handler, auth=None):
     return SmartThingsClient(auth or AuthPAT("tok"), transport=httpx.MockTransport(handler))
 
 
-def test_envia_token_e_pagina_lista():
-    chamadas = []
+def test_sends_token_and_pages_the_list():
+    calls = []
 
     def handler(req: httpx.Request):
-        chamadas.append(req)
+        calls.append(req)
         assert req.headers["Authorization"] == "Bearer tok"
         if req.url.params.get("page") == "1":
             return httpx.Response(200, json={"items": [{"deviceId": "b"}], "_links": {}})
@@ -27,20 +27,20 @@ def test_envia_token_e_pagina_lista():
             },
         )
 
-    assert [d["deviceId"] for d in cliente(handler).listar_dispositivos()] == ["a", "b"]
-    assert len(chamadas) == 2
+    assert [d["deviceId"] for d in client(handler).list_devices()] == ["a", "b"]
+    assert len(calls) == 2
 
 
-def test_executar_monta_corpo_do_comando():
-    corpo = {}
+def test_execute_builds_the_command_body():
+    body = {}
 
     def handler(req: httpx.Request):
-        corpo.update(json.loads(req.content))
+        body.update(json.loads(req.content))
         assert req.url.path == "/v1/devices/dev1/commands"
         return httpx.Response(200, json={"results": [{"id": "x", "status": "ACCEPTED"}]})
 
-    cliente(handler).executar("dev1", "thermostatCoolingSetpoint", "setCoolingSetpoint", [24])
-    assert corpo == {
+    client(handler).execute("dev1", "thermostatCoolingSetpoint", "setCoolingSetpoint", [24])
+    assert body == {
         "commands": [
             {
                 "component": "main",
@@ -52,44 +52,44 @@ def test_executar_monta_corpo_do_comando():
     }
 
 
-def test_comando_falho_gera_erro():
+def test_failed_command_raises():
     handler = lambda req: httpx.Response(200, json={"results": [{"id": "x", "status": "FAILED"}]})  # noqa: E731
-    with pytest.raises(ErroDispositivo, match="recusou"):
-        cliente(handler).executar("dev1", "switch", "on")
+    with pytest.raises(DeviceError, match="refused"):
+        client(handler).execute("dev1", "switch", "on")
 
 
 @pytest.mark.parametrize(
-    ("codigo", "trecho"), [(401, "expirado"), (403, "permissão"), (404, "não encontrado"), (500, "HTTP 500")]
+    ("code", "snippet"), [(401, "expired"), (403, "permission"), (404, "not found"), (500, "HTTP 500")]
 )
-def test_erros_http_amigaveis(codigo, trecho):
-    with pytest.raises(ErroDispositivo, match=trecho):
-        cliente(lambda req: httpx.Response(codigo)).status("dev1")
+def test_friendly_http_errors(code, snippet):
+    with pytest.raises(DeviceError, match=snippet):
+        client(lambda req: httpx.Response(code)).status("dev1")
 
 
-def test_timeout_amigavel():
+def test_friendly_timeout():
     def handler(req):
-        raise httpx.ConnectTimeout("lento", request=req)
+        raise httpx.ConnectTimeout("slow", request=req)
 
-    with pytest.raises(ErroDispositivo, match="a tempo"):
-        cliente(handler).status("dev1")
+    with pytest.raises(DeviceError, match="in time"):
+        client(handler).status("dev1")
 
 
-def test_401_tenta_renovar_uma_vez():
-    class AuthRenovavel:
+def test_401_tries_to_refresh_once():
+    class RefreshableAuth:
         def __init__(self):
-            self.atual = "velho"
+            self.current = "old"
 
         def token(self):
-            return self.atual
+            return self.current
 
-        def renovar(self, token_rejeitado=None):
-            assert token_rejeitado == "velho"
-            self.atual = "novo"
+        def refresh(self, rejected_token=None):
+            assert rejected_token == "old"
+            self.current = "new"
             return True
 
     def handler(req):
-        if req.headers["Authorization"] == "Bearer velho":
+        if req.headers["Authorization"] == "Bearer old":
             return httpx.Response(401)
         return httpx.Response(200, json={"components": {}})
 
-    assert cliente(handler, AuthRenovavel()).status("dev1") == {"components": {}}
+    assert client(handler, RefreshableAuth()).status("dev1") == {"components": {}}

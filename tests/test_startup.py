@@ -1,15 +1,15 @@
-"""Iniciar com o Windows, usando um winreg falso (não toca no registro real)."""
+"""Launch at Windows startup, using a fake winreg (does not touch the real registry)."""
 
 import sys
 
 import pytest
 
-from mothlit import inicializacao
+from mothlit import startup
 
 
-class ChaveFalsa:
-    def __init__(self, valores):
-        self.valores = valores
+class FakeKey:
+    def __init__(self, values):
+        self.values = values
 
     def __enter__(self):
         return self
@@ -18,62 +18,62 @@ class ChaveFalsa:
         return False
 
 
-class WinregFalso:
+class FakeWinreg:
     HKEY_CURRENT_USER = "HKCU"
     REG_SZ = 1
 
     def __init__(self):
-        self.valores = {}
+        self.values = {}
 
-    def OpenKey(self, raiz, caminho):
-        return ChaveFalsa(self.valores)
+    def OpenKey(self, root, path):
+        return FakeKey(self.values)
 
     CreateKey = OpenKey
 
-    def QueryValueEx(self, chave, nome):
-        if nome not in chave.valores:
-            raise FileNotFoundError(nome)
-        return chave.valores[nome], self.REG_SZ
+    def QueryValueEx(self, key, name):
+        if name not in key.values:
+            raise FileNotFoundError(name)
+        return key.values[name], self.REG_SZ
 
-    def SetValueEx(self, chave, nome, _reservado, _tipo, valor):
-        chave.valores[nome] = valor
+    def SetValueEx(self, key, name, _reserved, _type, value):
+        key.values[name] = value
 
-    def DeleteValue(self, chave, nome):
-        if nome not in chave.valores:
-            raise FileNotFoundError(nome)
-        del chave.valores[nome]
+    def DeleteValue(self, key, name):
+        if name not in key.values:
+            raise FileNotFoundError(name)
+        del key.values[name]
 
 
 @pytest.fixture
-def registro(monkeypatch):
-    falso = WinregFalso()
-    monkeypatch.setattr(inicializacao, "winreg", falso)
-    return falso
+def registry(monkeypatch):
+    fake = FakeWinreg()
+    monkeypatch.setattr(startup, "winreg", fake)
+    return fake
 
 
-def test_liga_e_desliga(registro):
-    assert inicializacao.ativo() is False
-    inicializacao.definir(True)
-    assert inicializacao.ativo() is True
-    assert registro.valores["Mothlit"].endswith("-m mothlit --bandeja")
-    inicializacao.definir(False)
-    assert inicializacao.ativo() is False
-    inicializacao.definir(False)  # desligar de novo não quebra
+def test_turns_on_and_off(registry):
+    assert startup.enabled() is False
+    startup.set_enabled(True)
+    assert startup.enabled() is True
+    assert registry.values["Mothlit"].endswith("-m mothlit --tray")
+    startup.set_enabled(False)
+    assert startup.enabled() is False
+    startup.set_enabled(False)  # turning off again does not break
 
 
-def test_comando_usa_pythonw_sem_console():
-    assert "pythonw.exe" in inicializacao.comando().lower()
+def test_command_uses_pythonw_without_console():
+    assert "pythonw.exe" in startup.command().lower()
 
 
-def test_comando_do_executavel(monkeypatch):
+def test_executable_command(monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", r"C:\Apps\Mothlit\Mothlit.exe")
-    assert inicializacao.comando() == r'"C:\Apps\Mothlit\Mothlit.exe" --bandeja'
+    assert startup.command() == r'"C:\Apps\Mothlit\Mothlit.exe" --tray'
 
 
-def test_fora_do_windows(monkeypatch):
-    monkeypatch.setattr(inicializacao, "winreg", None)
-    assert inicializacao.suportado() is False
-    assert inicializacao.ativo() is False
+def test_outside_windows(monkeypatch):
+    monkeypatch.setattr(startup, "winreg", None)
+    assert startup.supported() is False
+    assert startup.enabled() is False
     with pytest.raises(OSError):
-        inicializacao.definir(True)
+        startup.set_enabled(True)

@@ -1,147 +1,146 @@
-"""Adaptador do ar-condicionado Samsung via SmartThings API."""
+"""Samsung air conditioner adapter via the SmartThings API."""
 
 import threading
 from dataclasses import dataclass, field
 
-from .base import ErroDispositivo
+from .base import DeviceError
 from .smartthings import SmartThingsClient
 
 CAP_SWITCH = "switch"
 CAP_SETPOINT = "thermostatCoolingSetpoint"
-CAP_MODO = "airConditionerMode"
-CAP_VENTILADOR = "airConditionerFanMode"
-CAP_TEMPERATURA = "temperatureMeasurement"
-CAP_OSCILACAO = "fanOscillationMode"
-CAP_OPCIONAL = "custom.airConditionerOptionalMode"  # Samsung: sleep, quiet, windFree...
+CAP_MODE = "airConditionerMode"
+CAP_FAN = "airConditionerFanMode"
+CAP_TEMPERATURE = "temperatureMeasurement"
+CAP_OSCILLATION = "fanOscillationMode"
+CAP_OPTIONAL = "custom.airConditionerOptionalMode"  # Samsung: sleep, quiet, windFree...
 
-FAIXA_PADRAO = (16.0, 30.0, 1.0)
+DEFAULT_RANGE = (16.0, 30.0, 1.0)
 
 
 @dataclass
-class EstadoAr:
-    ligado: bool
-    temperatura_alvo: float | None
-    faixa_alvo: tuple[float, float, float]  # mínimo, máximo, passo
-    temperatura_ambiente: float | None
-    modo: str | None
-    modos: list[str] = field(default_factory=list)
-    ventilador: str | None = None
-    ventiladores: list[str] = field(default_factory=list)
+class AcState:
+    on: bool
+    target_temp: float | None
+    target_range: tuple[float, float, float]  # minimum, maximum, step
+    room_temp: float | None
+    mode: str | None
+    modes: list[str] = field(default_factory=list)
+    fan: str | None = None
+    fans: list[str] = field(default_factory=list)
     capabilities: set[str] = field(default_factory=set)
-    oscilacao: str | None = None
-    oscilacoes: list[str] = field(default_factory=list)
-    modo_opcional: str | None = None
-    modos_opcionais: list[str] = field(default_factory=list)
-    rotulo: str = ""
+    oscillation: str | None = None
+    oscillations: list[str] = field(default_factory=list)
+    optional_mode: str | None = None
+    optional_modes: list[str] = field(default_factory=list)
+    label: str = ""
 
 
-class ArCondicionado:
-    nome = "Ar-condicionado"
+class AirConditioner:
+    name = "Air conditioner"
 
-    def __init__(self, cliente: SmartThingsClient, device_id: str, componente: str = "main"):
-        self._cliente = cliente
+    def __init__(self, client: SmartThingsClient, device_id: str, component: str = "main"):
+        self._client = client
         self._id = device_id
-        self._componente = componente
+        self._component = component
         self._capabilities: set[str] | None = None
-        self.rotulo = ""
-        self._faixa = FAIXA_PADRAO
+        self.label = ""
+        self._range = DEFAULT_RANGE
         self._lock = threading.Lock()
 
     def capabilities(self) -> set[str]:
-        """Capabilities declaradas pelo aparelho (lidas uma vez via GET /devices/{id})."""
+        """Capabilities declared by the device (read once via GET /devices/{id})."""
         if self._capabilities is None:
-            dados = self._cliente.dispositivo(self._id)
-            self.rotulo = dados.get("label") or dados.get("name") or ""
-            for comp in dados.get("components", []):
-                if comp.get("id") == self._componente:
+            data = self._client.device(self._id)
+            self.label = data.get("label") or data.get("name") or ""
+            for comp in data.get("components", []):
+                if comp.get("id") == self._component:
                     self._capabilities = {c["id"] for c in comp.get("capabilities", [])}
                     break
             else:
-                raise ErroDispositivo("O ar-condicionado não tem o componente principal esperado.")
+                raise DeviceError("The air conditioner does not have the expected main component.")
         return self._capabilities
 
-    # --- comandos ---
+    # --- commands ---
 
-    def ligar(self) -> None:
-        self._executar(CAP_SWITCH, "on")
+    def turn_on(self) -> None:
+        self._execute(CAP_SWITCH, "on")
 
-    def desligar(self) -> None:
-        self._executar(CAP_SWITCH, "off")
+    def turn_off(self) -> None:
+        self._execute(CAP_SWITCH, "off")
 
-    def definir_temperatura(self, valor: float) -> float:
-        minimo, maximo, _ = self._faixa
-        valor = max(minimo, min(maximo, valor))
-        # A API aceita número; mandamos inteiro quando não há fração (ex.: 24, não 24.0).
-        self._executar(CAP_SETPOINT, "setCoolingSetpoint", [int(valor) if valor == int(valor) else valor])
-        return valor
+    def set_temperature(self, value: float) -> float:
+        minimum, maximum, _ = self._range
+        value = max(minimum, min(maximum, value))
+        # The API accepts a number; we send an integer when there is no fraction (e.g. 24, not 24.0).
+        self._execute(CAP_SETPOINT, "setCoolingSetpoint", [int(value) if value == int(value) else value])
+        return value
 
-    def definir_modo(self, modo: str) -> None:
-        self._executar(CAP_MODO, "setAirConditionerMode", [modo])
+    def set_mode(self, mode: str) -> None:
+        self._execute(CAP_MODE, "setAirConditionerMode", [mode])
 
-    def definir_ventilador(self, velocidade: str) -> None:
-        self._executar(CAP_VENTILADOR, "setFanMode", [velocidade])
+    def set_fan(self, speed: str) -> None:
+        self._execute(CAP_FAN, "setFanMode", [speed])
 
-    def definir_oscilacao(self, modo: str) -> None:
-        self._executar(CAP_OSCILACAO, "setFanOscillationMode", [modo])
+    def set_oscillation(self, mode: str) -> None:
+        self._execute(CAP_OSCILLATION, "setFanOscillationMode", [mode])
 
-    def definir_modo_opcional(self, modo: str) -> None:
-        self._executar(CAP_OPCIONAL, "setAcOptionalMode", [modo])
+    def set_optional_mode(self, mode: str) -> None:
+        self._execute(CAP_OPTIONAL, "setAcOptionalMode", [mode])
 
-    # --- leitura ---
+    # --- reading ---
 
-    def estado(self) -> EstadoAr:
+    def state(self) -> AcState:
         with self._lock:
             caps = set(self.capabilities())
-            comp = self._cliente.status(self._id).get("components", {}).get(self._componente, {})
+            comp = self._client.status(self._id).get("components", {}).get(self._component, {})
 
-        def valor(cap, atributo):
-            return ((comp.get(cap) or {}).get(atributo) or {}).get("value")
+        def value(cap, attribute):
+            return ((comp.get(cap) or {}).get(attribute) or {}).get("value")
 
-        # Algumas capabilities são declaradas mas desativadas neste modelo.
-        caps -= set(valor("custom.disabledCapabilities", "disabledCapabilities") or [])
+        # Some capabilities are declared but disabled on this model.
+        caps -= set(value("custom.disabledCapabilities", "disabledCapabilities") or [])
 
-        faixa = valor(CAP_SETPOINT, "coolingSetpointRange")
-        if isinstance(faixa, dict) and "minimum" in faixa and "maximum" in faixa:
-            self._faixa = (float(faixa["minimum"]), float(faixa["maximum"]), float(faixa.get("step") or 1))
+        setpoint_range = value(CAP_SETPOINT, "coolingSetpointRange")
+        if isinstance(setpoint_range, dict) and "minimum" in setpoint_range and "maximum" in setpoint_range:
+            self._range = (float(setpoint_range["minimum"]), float(setpoint_range["maximum"]),
+                           float(setpoint_range.get("step") or 1))
 
-        # "available*" muda conforme o modo atual (ex.: em auto só há ventilador auto);
-        # "supported*" é a lista completa do aparelho.
-        modos = valor(CAP_MODO, "availableAcModes") or valor(CAP_MODO, "supportedAcModes") or []
-        ventiladores = (
-            valor(CAP_VENTILADOR, "availableAcFanModes") or valor(CAP_VENTILADOR, "supportedAcFanModes") or []
-        )
+        # "available*" changes with the current mode (e.g. in auto the only fan speed is auto);
+        # "supported*" is the device's full list.
+        modes = value(CAP_MODE, "availableAcModes") or value(CAP_MODE, "supportedAcModes") or []
+        fans = value(CAP_FAN, "availableAcFanModes") or value(CAP_FAN, "supportedAcFanModes") or []
 
-        return EstadoAr(
-            ligado=valor(CAP_SWITCH, "switch") == "on",
-            temperatura_alvo=_numero(valor(CAP_SETPOINT, "coolingSetpoint")),
-            faixa_alvo=self._faixa,
-            temperatura_ambiente=_numero(valor(CAP_TEMPERATURA, "temperature")),
-            modo=valor(CAP_MODO, "airConditionerMode"),
-            modos=list(modos),
-            ventilador=valor(CAP_VENTILADOR, "fanMode"),
-            ventiladores=list(ventiladores),
+        return AcState(
+            on=value(CAP_SWITCH, "switch") == "on",
+            target_temp=_number(value(CAP_SETPOINT, "coolingSetpoint")),
+            target_range=self._range,
+            room_temp=_number(value(CAP_TEMPERATURE, "temperature")),
+            mode=value(CAP_MODE, "airConditionerMode"),
+            modes=list(modes),
+            fan=value(CAP_FAN, "fanMode"),
+            fans=list(fans),
             capabilities=caps,
-            oscilacao=valor(CAP_OSCILACAO, "fanOscillationMode"),
-            oscilacoes=list(
-                valor(CAP_OSCILACAO, "availableFanOscillationModes")
-                or valor(CAP_OSCILACAO, "supportedFanOscillationModes")
+            oscillation=value(CAP_OSCILLATION, "fanOscillationMode"),
+            oscillations=list(
+                value(CAP_OSCILLATION, "availableFanOscillationModes")
+                or value(CAP_OSCILLATION, "supportedFanOscillationModes")
                 or []
             ),
-            modo_opcional=valor(CAP_OPCIONAL, "acOptionalMode"),
-            modos_opcionais=list(
-                valor(CAP_OPCIONAL, "availableAcOptionalMode") or valor(CAP_OPCIONAL, "supportedAcOptionalMode") or []
+            optional_mode=value(CAP_OPTIONAL, "acOptionalMode"),
+            optional_modes=list(
+                value(CAP_OPTIONAL, "availableAcOptionalMode") or value(CAP_OPTIONAL, "supportedAcOptionalMode") or []
             ),
-            rotulo=self.rotulo,
+            label=self.label,
         )
 
-    # --- internos ---
+    # --- internals ---
 
-    def _executar(self, capability: str, comando: str, argumentos: list | None = None) -> None:
+    def _execute(self, capability: str, command: str, arguments: list | None = None) -> None:
         with self._lock:
             if capability not in self.capabilities():
-                raise ErroDispositivo(f"O ar-condicionado não suporta '{capability}'.")
-            self._cliente.executar(self._id, capability, comando, argumentos, self._componente)
+                raise DeviceError(f"The air conditioner does not support '{capability}'.")
+            self._client.execute(self._id, capability, command, arguments, self._component)
 
 
-def _numero(valor) -> float | None:
-    return float(valor) if isinstance(valor, (int, float)) else None
+def _number(value) -> float | None:
+    return float(value) if isinstance(value, (int, float)) else None

@@ -1,9 +1,9 @@
-"""Janela do Mothlit com pywebview (WebView2 no Windows).
+"""Mothlit window with pywebview (WebView2 on Windows).
 
-A interface é HTML/CSS/JS em `web/`. O JavaScript chama os métodos públicos de
-`Api` (`pywebview.api.<metodo>()`); o pywebview executa cada chamada numa thread
-separada, então a rede nunca trava a interface. Toda resposta é um dict simples:
-`{"ok": True, "dados": ...}` ou `{"ok": False, "erro": "mensagem amigável"}`.
+The interface is HTML/CSS/JS in `web/`. The JavaScript calls the public methods of
+`Api` (`pywebview.api.<method>()`); pywebview runs each call in a separate thread,
+so the network never freezes the interface. Every response is a plain dict:
+`{"ok": True, "data": ...}` or `{"ok": False, "error": "friendly message"}`.
 """
 
 import ctypes
@@ -18,310 +18,309 @@ from typing import Any, Callable
 
 import webview
 
-from .. import config, inicializacao
-from ..config import ErroConfiguracao
+from .. import config, startup
+from ..config import ConfigError
 from ..devices import (
-    ArCondicionado,
-    ErroDispositivo,
-    EstadoAr,
-    EstadoLampada,
-    Lampada,
-    criar_ar,
-    criar_auth_smartthings,
-    criar_lampada,
+    AcState,
+    AirConditioner,
+    DeviceError,
+    Lamp,
+    LampState,
+    create_ac,
+    create_lamp,
+    create_smartthings_auth,
 )
 from ..devices.smartthings import AuthPAT, SmartThingsClient
-from . import marca
+from . import brand
 
 WEB = Path(__file__).resolve().parent / "web"
-LARGURA, ALTURA = 420, 760
-FUNDO = "#09090b"
+WIDTH, HEIGHT = 420, 760
+BACKGROUND = "#09090b"
 
 log = logging.getLogger(__name__)
 
 
-def _ar_dict(e: EstadoAr) -> dict[str, Any]:
+def _ac_dict(s: AcState) -> dict[str, Any]:
     return {
-        "nome": e.rotulo,
-        "ligado": e.ligado,
-        "alvo": e.temperatura_alvo,
-        "faixa": list(e.faixa_alvo),
-        "ambiente": e.temperatura_ambiente,
-        "modo": e.modo,
-        "modos": e.modos,
-        "ventilador": e.ventilador,
-        "ventiladores": e.ventiladores,
-        "opcional": e.modo_opcional,
-        "opcionais": e.modos_opcionais,
-        "oscilacao": e.oscilacao,
-        "oscilacoes": e.oscilacoes,
+        "name": s.label,
+        "on": s.on,
+        "target": s.target_temp,
+        "range": list(s.target_range),
+        "room": s.room_temp,
+        "mode": s.mode,
+        "modes": s.modes,
+        "fan": s.fan,
+        "fans": s.fans,
+        "optional": s.optional_mode,
+        "optionals": s.optional_modes,
+        "oscillation": s.oscillation,
+        "oscillations": s.oscillations,
     }
 
 
-def _luz_dict(e: EstadoLampada, nome: str) -> dict[str, Any]:
+def _light_dict(s: LampState, name: str) -> dict[str, Any]:
     return {
-        "nome": nome,
-        "ligada": e.ligada,
-        "modo": e.modo,
-        "brilho": e.brilho,
-        "temperatura": e.temperatura_cor,
-        "hsv": list(e.cor_hsv) if e.cor_hsv else None,
-        "suportaCor": e.suporta_cor,
-        "suportaTemperatura": e.suporta_temperatura,
+        "name": name,
+        "on": s.on,
+        "mode": s.mode,
+        "brightness": s.brightness,
+        "temperature": s.color_temp,
+        "hsv": list(s.color_hsv) if s.color_hsv else None,
+        "supportsColor": s.supports_color,
+        "supportsTemperature": s.supports_temp,
     }
 
 
-def _criar(fabrica):
+def _create(factory):
     try:
-        return fabrica(), None
-    except ErroConfiguracao as e:
+        return factory(), None
+    except ConfigError as e:
         return None, str(e)
 
 
 class Api:
-    """Métodos chamados pelo JavaScript. Atributos privados (com _) não são expostos."""
+    """Methods called by the JavaScript. Private attributes (starting with _) are not exposed."""
 
-    def __init__(self, lampada: Lampada | None = None, ar: ArCondicionado | None = None,
-                 erro_lampada: str | None = None, erro_ar: str | None = None):
-        self._lampada, self._erro_lampada = lampada, erro_lampada
-        self._ar, self._erro_ar = ar, erro_ar
-        self._janela = None
-        # último liga/desliga conhecido de cada aparelho (usado no menu da bandeja)
-        self._ligado: dict[str, bool | None] = {"ar": None, "luz": None}
-        self._saindo = False
-        self._painel = None  # mini painel da bandeja (ui.flyout.PainelRapido)
-        self._abrir_completo: Callable[[str | None], None] | None = None
-        self._ao_mudar: Callable[[], None] | None = None
+    def __init__(self, lamp: Lamp | None = None, ac: AirConditioner | None = None,
+                 lamp_error: str | None = None, ac_error: str | None = None):
+        self._lamp, self._lamp_error = lamp, lamp_error
+        self._ac, self._ac_error = ac, ac_error
+        self._window = None
+        # last known on/off of each device (used by the tray menu)
+        self._on: dict[str, bool | None] = {"ac": None, "light": None}
+        self._quitting = False
+        self._flyout = None  # tray quick panel (ui.flyout.QuickPanel)
+        self._open_full: Callable[[str | None], None] | None = None
+        self._on_change: Callable[[], None] | None = None
 
     @classmethod
-    def da_configuracao(cls) -> "Api":
-        lampada, erro_lampada = _criar(criar_lampada)
-        ar, erro_ar = _criar(criar_ar)
-        return cls(lampada, ar, erro_lampada, erro_ar)
+    def from_config(cls) -> "Api":
+        lamp, lamp_error = _create(create_lamp)
+        ac, ac_error = _create(create_ac)
+        return cls(lamp, ac, lamp_error, ac_error)
 
-    # --- ar-condicionado ---
+    # --- air conditioner ---
 
-    def estado_ar(self):
-        r = self._usar_ar(lambda ar: _ar_dict(ar.estado()))
+    def ac_state(self):
+        r = self._use_ac(lambda ac: _ac_dict(ac.state()))
         if r["ok"]:
-            self._lembrar("ar", r["dados"]["ligado"])
+            self._remember("ac", r["data"]["on"])
         return r
 
-    def ar_ligar(self, ligar: bool):
-        r = self._usar_ar(lambda ar: ar.ligar() if ligar else ar.desligar())
+    def ac_power(self, on: bool):
+        r = self._use_ac(lambda ac: ac.turn_on() if on else ac.turn_off())
         if r["ok"]:
-            self._lembrar("ar", bool(ligar))
+            self._remember("ac", bool(on))
         return r
 
-    def alternar_ar(self):
-        """Lê o estado atual e inverte (usado pela bandeja)."""
-        return self._alternar("ar", self.estado_ar, self.ar_ligar)
+    def toggle_ac(self):
+        """Reads the current state and flips it (used by the tray)."""
+        return self._toggle(self.ac_state, self.ac_power)
 
-    def ar_temperatura(self, valor: float):
-        return self._usar_ar(lambda ar: ar.definir_temperatura(float(valor)))
+    def ac_temperature(self, value: float):
+        return self._use_ac(lambda ac: ac.set_temperature(float(value)))
 
-    def ar_modo(self, modo: str):
-        return self._usar_ar(lambda ar: ar.definir_modo(str(modo)))
+    def ac_mode(self, mode: str):
+        return self._use_ac(lambda ac: ac.set_mode(str(mode)))
 
-    def ar_ventilador(self, velocidade: str):
-        return self._usar_ar(lambda ar: ar.definir_ventilador(str(velocidade)))
+    def ac_fan(self, speed: str):
+        return self._use_ac(lambda ac: ac.set_fan(str(speed)))
 
-    def ar_opcional(self, modo: str):
-        return self._usar_ar(lambda ar: ar.definir_modo_opcional(str(modo)))
+    def ac_optional(self, mode: str):
+        return self._use_ac(lambda ac: ac.set_optional_mode(str(mode)))
 
-    def ar_oscilacao(self, modo: str):
-        return self._usar_ar(lambda ar: ar.definir_oscilacao(str(modo)))
+    def ac_oscillation(self, mode: str):
+        return self._use_ac(lambda ac: ac.set_oscillation(str(mode)))
 
-    # --- lâmpada ---
+    # --- lamp ---
 
-    def estado_luz(self):
-        r = self._usar_luz(lambda luz: _luz_dict(luz.estado(), luz.nome))
+    def light_state(self):
+        r = self._use_light(lambda lamp: _light_dict(lamp.state(), lamp.name))
         if r["ok"]:
-            self._lembrar("luz", r["dados"]["ligada"])
+            self._remember("light", r["data"]["on"])
         return r
 
-    def luz_ligar(self, ligar: bool):
-        r = self._usar_luz(lambda luz: luz.ligar() if ligar else luz.desligar())
+    def light_power(self, on: bool):
+        r = self._use_light(lambda lamp: lamp.turn_on() if on else lamp.turn_off())
         if r["ok"]:
-            self._lembrar("luz", bool(ligar))
+            self._remember("light", bool(on))
         return r
 
-    def alternar_luz(self):
-        """Lê o estado atual e inverte (usado pela bandeja)."""
-        return self._alternar("luz", self.estado_luz, self.luz_ligar)
+    def toggle_light(self):
+        """Reads the current state and flips it (used by the tray)."""
+        return self._toggle(self.light_state, self.light_power)
 
-    def luz_brilho(self, porcentagem: int):
-        return self._usar_luz(lambda luz: luz.definir_brilho(round(porcentagem)))
+    def light_brightness(self, percent: int):
+        return self._use_light(lambda lamp: lamp.set_brightness(round(percent)))
 
-    def luz_temperatura(self, porcentagem: int):
-        return self._usar_luz(lambda luz: luz.definir_temperatura_cor(round(porcentagem)))
+    def light_temperature(self, percent: int):
+        return self._use_light(lambda lamp: lamp.set_color_temp(round(percent)))
 
-    def luz_hsv(self, h: float, s: float, v: float):
-        return self._usar_luz(lambda luz: luz.definir_hsv(h, s, v))
+    def light_hsv(self, h: float, s: float, v: float):
+        return self._use_light(lambda lamp: lamp.set_hsv(h, s, v))
 
-    def ultimo_ligado(self, qual: str) -> bool | None:
-        """Último liga/desliga conhecido ("ar" ou "luz"), sem ir à rede."""
-        return self._ligado.get(qual)
+    def last_on(self, which: str) -> bool | None:
+        """Last known on/off ("ac" or "light"), without going to the network."""
+        return self._on.get(which)
 
-    # --- janela e configuração ---
+    # --- window and configuration ---
 
-    def configuracoes(self):
-        cfg = config.carregar()
-        auth = criar_auth_smartthings()
-        return {"ok": True, "dados": {
-            "lampadaIp": cfg.lampada_ip or "–",
-            "lampadaVersao": cfg.lampada_versao,
-            "arId": cfg.ar_device_id or "–",
-            "env": str(config.caminho_env()),
+    def settings(self):
+        cfg = config.load()
+        auth = create_smartthings_auth()
+        return {"ok": True, "data": {
+            "lampIp": cfg.lamp_ip or "–",
+            "lampVersion": cfg.lamp_version,
+            "acId": cfg.ac_device_id or "–",
+            "env": str(config.env_path()),
             "smartthings": {
-                "tipo": getattr(auth, "tipo", None),
-                "expiraEm": getattr(auth, "expira_em", None),  # só no OAuth (epoch em segundos)
+                "kind": getattr(auth, "kind", None),
+                "expiresAt": getattr(auth, "expires_at", None),  # OAuth only (epoch in seconds)
             },
         }}
 
-    def trocar_token_smartthings(self, token: str):
-        """Plano B: cola um token pessoal (PAT) novo. Valida na SmartThings antes de salvar."""
+    def replace_smartthings_token(self, token: str):
+        """Plan B: paste a new personal access token (PAT). Validated with SmartThings before saving."""
         token = (token or "").strip()
         if not token:
-            return {"ok": False, "erro": "Cole o token antes de salvar."}
-        cfg = config.carregar()
-        cliente = SmartThingsClient(AuthPAT(token))
+            return {"ok": False, "error": "Paste the token before saving."}
+        cfg = config.load()
+        client = SmartThingsClient(AuthPAT(token))
         try:
-            if cfg.ar_device_id:
-                cliente.dispositivo(cfg.ar_device_id)
+            if cfg.ac_device_id:
+                client.device(cfg.ac_device_id)
             else:
-                cliente.listar_dispositivos()
-        except ErroDispositivo as e:
-            return {"ok": False, "erro": f"Token não aceito: {e}"}
+                client.list_devices()
+        except DeviceError as e:
+            return {"ok": False, "error": f"Token not accepted: {e}"}
         finally:
-            cliente.fechar()
-        config.salvar_segredo(config.SEGREDO_SMARTTHINGS_PAT, token)
-        config.apagar_segredo_json(config.SEGREDO_SMARTTHINGS_OAUTH)  # passa a usar o PAT
-        self._ar, self._erro_ar = _criar(criar_ar)
-        return self.configuracoes()
+            client.close()
+        config.save_secret(config.SECRET_SMARTTHINGS_PAT, token)
+        config.delete_secret_json(config.SECRET_SMARTTHINGS_OAUTH)  # switches to the PAT
+        self._ac, self._ac_error = _create(create_ac)
+        return self.settings()
 
-    def minimizar(self):
-        """Vai para a bandeja: some da tela e da barra de tarefas."""
-        if self._janela:
-            self._janela.hide()
+    def minimize(self):
+        """Goes to the tray: disappears from the screen and the taskbar."""
+        if self._window:
+            self._window.hide()
 
-    def fechar(self):
-        """Botão ×: vai para a bandeja ou encerra, conforme a preferência."""
-        if config.ler_preferencias()["fechar_para_bandeja"]:
-            self.minimizar()
-            return {"ok": True, "dados": "bandeja"}
-        self.sair()
-        return {"ok": True, "dados": "saiu"}
+    def close(self):
+        """× button: goes to the tray or quits, depending on the preference."""
+        if config.read_preferences()["close_to_tray"]:
+            self.minimize()
+            return {"ok": True, "data": "tray"}
+        self.quit()
+        return {"ok": True, "data": "quit"}
 
-    def esconder_flyout(self):
-        """O mini painel perdeu o foco (ou Esc)."""
-        if self._painel:
-            self._painel.esconder()
+    def hide_flyout(self):
+        """The quick panel lost focus (or Esc)."""
+        if self._flyout:
+            self._flyout.hide()
 
-    def abrir_completo(self, aba: str | None = None):
-        """Botão de expandir / setas do mini painel: abre a janela completa, opcionalmente numa aba."""
-        self.esconder_flyout()
-        if self._abrir_completo:
-            self._abrir_completo(aba)
+    def open_full(self, tab: str | None = None):
+        """Expand button / arrows of the quick panel: opens the full window, optionally on a tab."""
+        self.hide_flyout()
+        if self._open_full:
+            self._open_full(tab)
 
-    def sair(self):
-        """Encerra de verdade (menu da bandeja), ignorando a preferência de fechar para a bandeja."""
-        self._saindo = True
-        if self._janela:
-            self._janela.destroy()
+    def quit(self):
+        """Really quits (tray menu), ignoring the close-to-tray preference."""
+        self._quitting = True
+        if self._window:
+            self._window.destroy()
 
-    def preferencias(self):
-        prefs = config.ler_preferencias()
-        return {"ok": True, "dados": {
-            "iniciarComSistema": inicializacao.ativo(),
-            "iniciarSuportado": inicializacao.suportado(),
-            "fecharParaBandeja": bool(prefs["fechar_para_bandeja"]),
+    def preferences(self):
+        prefs = config.read_preferences()
+        return {"ok": True, "data": {
+            "launchAtStartup": startup.enabled(),
+            "launchSupported": startup.supported(),
+            "closeToTray": bool(prefs["close_to_tray"]),
         }}
 
-    def definir_preferencia(self, nome: str, valor: bool):
+    def set_preference(self, name: str, value: bool):
         try:
-            if nome == "iniciarComSistema":
-                inicializacao.definir(bool(valor))
-            elif nome == "fecharParaBandeja":
-                config.salvar_preferencia("fechar_para_bandeja", bool(valor))
+            if name == "launchAtStartup":
+                startup.set_enabled(bool(value))
+            elif name == "closeToTray":
+                config.save_preference("close_to_tray", bool(value))
             else:
-                return {"ok": False, "erro": f"Preferência desconhecida: {nome}"}
+                return {"ok": False, "error": f"Unknown preference: {name}"}
         except OSError as e:
-            return {"ok": False, "erro": f"Não consegui salvar a preferência: {e}"}
-        return self.preferencias()
+            return {"ok": False, "error": f"Could not save the preference: {e}"}
+        return self.preferences()
 
-    # --- internos ---
+    # --- internals ---
 
-    def _lembrar(self, qual: str, ligado: bool) -> None:
-        if self._ligado[qual] != ligado:
-            self._ligado[qual] = ligado
-            if self._ao_mudar:
-                self._ao_mudar()
-
-    @staticmethod
-    def _alternar(qual: str, ler, ligar):
-        atual = ler()
-        if not atual["ok"]:
-            return atual
-        chave = "ligado" if qual == "ar" else "ligada"
-        novo = not atual["dados"][chave]
-        r = ligar(novo)
-        return {**r, "dados": novo} if r["ok"] else r
-
-    def _usar_ar(self, acao: Callable[[ArCondicionado], Any]):
-        return self._executar(self._ar, self._erro_ar, acao)
-
-    def _usar_luz(self, acao: Callable[[Lampada], Any]):
-        return self._executar(self._lampada, self._erro_lampada, acao)
+    def _remember(self, which: str, on: bool) -> None:
+        if self._on[which] != on:
+            self._on[which] = on
+            if self._on_change:
+                self._on_change()
 
     @staticmethod
-    def _executar(dispositivo, erro_config, acao):
-        if dispositivo is None:
-            return {"ok": False, "configurado": False, "erro": erro_config}
+    def _toggle(read, power):
+        current = read()
+        if not current["ok"]:
+            return current
+        new = not current["data"]["on"]
+        r = power(new)
+        return {**r, "data": new} if r["ok"] else r
+
+    def _use_ac(self, action: Callable[[AirConditioner], Any]):
+        return self._run(self._ac, self._ac_error, action)
+
+    def _use_light(self, action: Callable[[Lamp], Any]):
+        return self._run(self._lamp, self._lamp_error, action)
+
+    @staticmethod
+    def _run(device, config_error, action):
+        if device is None:
+            return {"ok": False, "configured": False, "error": config_error}
         try:
-            return {"ok": True, "dados": acao(dispositivo)}
-        except ErroDispositivo as e:
-            return {"ok": False, "configurado": True, "erro": str(e)}
-        except Exception as e:  # nunca deixa a interface sem resposta
-            log.exception("Erro inesperado")
-            return {"ok": False, "configurado": True, "erro": f"Erro inesperado: {e}"}
+            return {"ok": True, "data": action(device)}
+        except DeviceError as e:
+            return {"ok": False, "configured": True, "error": str(e)}
+        except Exception as e:  # never leaves the interface without an answer
+            log.exception("Unexpected error")
+            return {"ok": False, "configured": True, "error": f"Unexpected error: {e}"}
 
 
-def _cantos_arredondados(janela) -> None:
-    """Windows 11: cantos arredondados e borda discreta na janela sem moldura."""
+def _round_corners(window) -> None:
+    """Windows 11: rounded corners and a subtle border on the frameless window."""
     if sys.platform != "win32":
         return
     try:
-        hwnd = janela.native.Handle.ToInt32()
-        for atributo, valor in ((33, 2), (34, 0x00272422)):  # CORNER_PREFERENCE=ROUND, BORDER_COLOR (0x00BBGGRR)
-            v = ctypes.c_int(valor)
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, atributo, ctypes.byref(v), ctypes.sizeof(v))
-    except Exception:  # cosmético: sem isso a janela só fica com cantos retos
-        log.debug("Não consegui arredondar os cantos", exc_info=True)
+        hwnd = window.native.Handle.ToInt32()
+        for attribute, value in ((33, 2), (34, 0x00272422)):  # CORNER_PREFERENCE=ROUND, BORDER_COLOR (0x00BBGGRR)
+            v = ctypes.c_int(value)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attribute, ctypes.byref(v), ctypes.sizeof(v))
+    except Exception:  # cosmetic: without it the window just has square corners
+        log.debug("Could not round the corners", exc_info=True)
 
 
-TITULO = "Mothlit"
-_MUTEX = "Local\\Mothlit.InstanciaUnica"
-_EVENTO_MOSTRAR = "Local\\Mothlit.Mostrar"
-_EVENTO_SAIR = "Local\\Mothlit.Sair"  # o instalador pede para o app sair antes de atualizar
-_handles = []  # mutex e evento vivem enquanto o processo existir
+TITLE = "Mothlit"
+_MUTEX = "Local\\Mothlit.SingleInstance"
+_SHOW_EVENT = "Local\\Mothlit.Show"
+_QUIT_EVENT = "Local\\Mothlit.Quit"  # the installer asks the app to quit before updating
+_handles = []  # the mutex and events live as long as the process
 
 
 def _kernel32():
     k = ctypes.windll.kernel32
-    for funcao in (k.CreateMutexW, k.CreateEventW, k.OpenEventW):
-        funcao.restype = wintypes.HANDLE
+    for function in (k.CreateMutexW, k.CreateEventW, k.OpenEventW):
+        function.restype = wintypes.HANDLE
     k.SetEvent.argtypes = [wintypes.HANDLE]
     k.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
     k.CloseHandle.argtypes = [wintypes.HANDLE]
     return k
 
 
-def _ja_aberto(trazer_janela: bool = True) -> bool:
-    """Instância única. Se o Mothlit já estiver rodando, pede para ele aparecer e devolve True.
+def _already_running(bring_window: bool = True) -> bool:
+    """Single instance. If Mothlit is already running, asks it to show up and returns True.
 
-    O pedido vai por um evento nomeado do Windows (não por FindWindow), porque a janela
-    de quem iniciou escondido na bandeja ainda nem existe para o sistema.
+    The request goes through a named Windows event (not FindWindow), because the window of an
+    instance that started hidden in the tray does not even exist for the system yet.
     """
     if sys.platform != "win32":
         return False
@@ -329,99 +328,99 @@ def _ja_aberto(trazer_janela: bool = True) -> bool:
     _handles.append(k.CreateMutexW(None, False, _MUTEX))
     if k.GetLastError() != 183:  # ERROR_ALREADY_EXISTS
         return False
-    if trazer_janela:
-        ctypes.windll.user32.AllowSetForegroundWindow(-1)  # ASFW_ANY: deixa a outra instância vir para a frente
-        evento = k.OpenEventW(0x0002, False, _EVENTO_MOSTRAR)  # EVENT_MODIFY_STATE
-        if evento:
-            k.SetEvent(evento)
-            k.CloseHandle(evento)
+    if bring_window:
+        ctypes.windll.user32.AllowSetForegroundWindow(-1)  # ASFW_ANY: lets the other instance come to the front
+        event = k.OpenEventW(0x0002, False, _SHOW_EVENT)  # EVENT_MODIFY_STATE
+        if event:
+            k.SetEvent(event)
+            k.CloseHandle(event)
     return True
 
 
-def _atender_evento(nome: str, acao: Callable[[], None], descricao: str) -> None:
-    """Thread que espera um evento nomeado do Windows (outra instância, ou o instalador) e executa `acao`."""
+def _serve_event(name: str, action: Callable[[], None], description: str) -> None:
+    """Thread that waits for a named Windows event (another instance, or the installer) and runs `action`."""
     if sys.platform != "win32":
         return
     k = _kernel32()
-    evento = k.CreateEventW(None, False, False, nome)  # auto-reset
-    _handles.append(evento)
+    event = k.CreateEventW(None, False, False, name)  # auto-reset
+    _handles.append(event)
 
-    def esperar():
-        while k.WaitForSingleObject(evento, 0xFFFFFFFF) == 0:  # INFINITE / WAIT_OBJECT_0
-            log.info("Pedido recebido: %s", descricao)
+    def wait():
+        while k.WaitForSingleObject(event, 0xFFFFFFFF) == 0:  # INFINITE / WAIT_OBJECT_0
+            log.info("Request received: %s", description)
             try:
-                acao()
+                action()
             except Exception:
-                log.exception("Falha ao atender o pedido: %s", descricao)
+                log.exception("Failed to handle the request: %s", description)
 
-    threading.Thread(target=esperar, name=f"evento-{descricao}", daemon=True).start()
+    threading.Thread(target=wait, name=f"event-{description}", daemon=True).start()
 
-def executar(na_bandeja: bool = False) -> None:
-    """Abre a janela. `na_bandeja`: começa escondida (usado ao iniciar com o Windows)."""
-    from ..tray import Bandeja
-    from .flyout import PainelRapido
+def run(in_tray: bool = False) -> None:
+    """Opens the window. `in_tray`: starts hidden (used when launching at Windows startup)."""
+    from ..tray import Tray
+    from .flyout import QuickPanel
 
-    if _ja_aberto(trazer_janela=not na_bandeja):
+    if _already_running(bring_window=not in_tray):
         return
     debug = bool(os.environ.get("MOTHLIT_DEBUG"))
     import keyring
 
     from .. import __version__
 
-    log.info("Mothlit %s iniciando (executável: %s, bandeja: %s, keyring: %s)", __version__,
-             getattr(sys, "frozen", False), na_bandeja, type(keyring.get_keyring()).__name__)
-    api = Api.da_configuracao()
-    log.info("Lâmpada: %s | Ar: %s (%s)", "ok" if api._lampada else api._erro_lampada,
-             "ok" if api._ar else api._erro_ar, getattr(criar_auth_smartthings(), "tipo", None))
-    janela = webview.create_window(
-        TITULO, url=str(WEB / "index.html"), js_api=api, width=LARGURA, height=ALTURA,
-        resizable=False, frameless=True, easy_drag=False, background_color=FUNDO, hidden=na_bandeja,
+    log.info("Mothlit %s starting (executable: %s, tray: %s, keyring: %s)", __version__,
+             getattr(sys, "frozen", False), in_tray, type(keyring.get_keyring()).__name__)
+    api = Api.from_config()
+    log.info("Lamp: %s | AC: %s (%s)", "ok" if api._lamp else api._lamp_error,
+             "ok" if api._ac else api._ac_error, getattr(create_smartthings_auth(), "kind", None))
+    window = webview.create_window(
+        TITLE, url=str(WEB / "index.html"), js_api=api, width=WIDTH, height=HEIGHT,
+        resizable=False, frameless=True, easy_drag=False, background_color=BACKGROUND, hidden=in_tray,
     )
-    api._janela = janela
+    api._window = window
 
-    def mostrar() -> None:
-        janela.show()
-        janela.restore()
-        _cantos_arredondados(janela)
+    def show() -> None:
+        window.show()
+        window.restore()
+        _round_corners(window)
         try:
-            ctypes.windll.user32.SetForegroundWindow(janela.native.Handle.ToInt32())
+            ctypes.windll.user32.SetForegroundWindow(window.native.Handle.ToInt32())
         except Exception:
             pass
-        janela.evaluate_js("window.aoRestaurar && aoRestaurar()")  # fade-in e dados frescos
+        window.evaluate_js("window.onRestore && onRestore()")  # fade-in and fresh data
 
-    def ao_fechar():
-        # Alt+F4 também respeita "minimizar na bandeja ao fechar"; "Sair" na bandeja não.
-        if not api._saindo and config.ler_preferencias()["fechar_para_bandeja"]:
-            janela.hide()
+    def on_closing():
+        # Alt+F4 also honors "minimize to tray on close"; "Quit" in the tray does not.
+        if not api._quitting and config.read_preferences()["close_to_tray"]:
+            window.hide()
             return False
         return True
 
-    painel = PainelRapido(api, FUNDO)
-    api._painel = painel
+    panel = QuickPanel(api, BACKGROUND)
+    api._flyout = panel
 
-    def abrir_completo(aba: str | None = None) -> None:
-        mostrar()
-        if aba in ("clima", "luz"):
-            janela.evaluate_js(f"window.selecionarAba && selecionarAba({json.dumps(aba)})")
+    def open_full(tab: str | None = None) -> None:
+        show()
+        if tab in ("climate", "light"):
+            window.evaluate_js(f"window.selectTab && selectTab({json.dumps(tab)})")
 
-    api._abrir_completo = abrir_completo
+    api._open_full = open_full
 
-    bandeja = Bandeja(
+    tray = Tray(
         api,
-        ao_abrir=mostrar,
-        ao_clicar=painel.alternar,
-        ao_sair=api.sair,
-        ao_alterar=lambda: janela.evaluate_js("window.atualizarTudo && atualizarTudo()"),
+        on_open=show,
+        on_click=panel.toggle,
+        on_quit=api.quit,
+        on_change=lambda: window.evaluate_js("window.refreshAll && refreshAll()"),
     )
-    api._ao_mudar = bandeja.atualizar_menu
+    api._on_change = tray.refresh_menu
 
-    janela.events.closing += ao_fechar
-    _atender_evento(_EVENTO_MOSTRAR, mostrar, "mostrar a janela")
-    _atender_evento(_EVENTO_SAIR, api.sair, "sair para atualizar")
-    janela.events.shown += lambda: _cantos_arredondados(janela)
-    janela.events.loaded += lambda: log.info("Interface carregada")
-    janela.events.restored += lambda: janela.evaluate_js("window.aoRestaurar && aoRestaurar()")
-    janela.events.closed += bandeja.parar
-    janela.events.closed += painel.destruir  # sem isso o webview.start não retorna
-    bandeja.iniciar()
-    webview.start(debug=debug, icon=str(marca.arquivo_ico()))
+    window.events.closing += on_closing
+    _serve_event(_SHOW_EVENT, show, "show the window")
+    _serve_event(_QUIT_EVENT, api.quit, "quit to update")
+    window.events.shown += lambda: _round_corners(window)
+    window.events.loaded += lambda: log.info("Interface loaded")
+    window.events.restored += lambda: window.evaluate_js("window.onRestore && onRestore()")
+    window.events.closed += tray.stop
+    window.events.closed += panel.destroy  # without this webview.start never returns
+    tray.start()
+    webview.start(debug=debug, icon=str(brand.ico_file()))

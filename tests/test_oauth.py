@@ -1,4 +1,4 @@
-"""OAuth da SmartThings: troca de código, renovação com rotação do refresh token e erros."""
+"""SmartThings OAuth: code exchange, refresh with refresh-token rotation, and errors."""
 
 import base64
 import threading
@@ -9,41 +9,41 @@ import pytest
 
 from mothlit.devices.smartthings import (
     AuthOAuth,
-    CredenciaisOAuth,
-    ErroAutorizacao,
-    ErroDispositivo,
+    AuthorizationError,
+    DeviceError,
+    OAuthCredentials,
     SmartThingsClient,
-    trocar_codigo,
-    url_autorizacao,
+    authorization_url,
+    exchange_code,
 )
 
 
-class Relogio:
-    def __init__(self, agora=1_000_000.0):
-        self.agora = agora
+class Clock:
+    def __init__(self, now=1_000_000.0):
+        self.now = now
 
     def __call__(self):
-        return self.agora
+        return self.now
 
 
-def servidor_token(respostas, pedidos):
-    """MockTransport do endpoint de token. `respostas`: lista de (status, json) consumida em ordem."""
+def token_server(responses, requests):
+    """MockTransport for the token endpoint. `responses`: list of (status, json) consumed in order."""
 
     def handler(req: httpx.Request):
-        pedidos.append({"url": str(req.url), "auth": req.headers.get("Authorization"),
-                        "corpo": {k: v[0] for k, v in parse_qs(req.content.decode()).items()}})
-        status, corpo = respostas.pop(0)
-        return httpx.Response(status, json=corpo)
+        requests.append({"url": str(req.url), "auth": req.headers.get("Authorization"),
+                         "body": {k: v[0] for k, v in parse_qs(req.content.decode()).items()}})
+        status, body = responses.pop(0)
+        return httpx.Response(status, json=body)
 
     return httpx.MockTransport(handler)
 
 
-def credenciais(expira_em):
-    return CredenciaisOAuth("cid", "segredo", "acesso-1", "renova-1", expira_em)
+def credentials(expires_at):
+    return OAuthCredentials("cid", "secret", "access-1", "refresh-1", expires_at)
 
 
-def test_url_de_autorizacao():
-    url, state = url_autorizacao("cid", "https://httpbin.org/get", state="xyz")
+def test_authorization_url():
+    url, state = authorization_url("cid", "https://httpbin.org/get", state="xyz")
     q = parse_qs(urlparse(url).query)
     assert url.startswith("https://api.smartthings.com/oauth/authorize?")
     assert q == {"client_id": ["cid"], "response_type": ["code"], "redirect_uri": ["https://httpbin.org/get"],
@@ -51,93 +51,93 @@ def test_url_de_autorizacao():
     assert state == "xyz"
 
 
-def test_trocar_codigo_usa_basic_auth():
-    pedidos = []
-    t = servidor_token([(200, {"access_token": "a", "refresh_token": "r", "expires_in": 86399})], pedidos)
-    cred = trocar_codigo("cid", "segredo", "ABC123", "https://httpbin.org/get", transport=t, relogio=Relogio(100))
-    assert cred == CredenciaisOAuth("cid", "segredo", "a", "r", 100 + 86399)
-    assert pedidos[0]["auth"] == "Basic " + base64.b64encode(b"cid:segredo").decode()
-    assert pedidos[0]["corpo"] == {"grant_type": "authorization_code", "code": "ABC123", "client_id": "cid",
+def test_exchange_code_uses_basic_auth():
+    requests = []
+    t = token_server([(200, {"access_token": "a", "refresh_token": "r", "expires_in": 86399})], requests)
+    cred = exchange_code("cid", "secret", "ABC123", "https://httpbin.org/get", transport=t, clock=Clock(100))
+    assert cred == OAuthCredentials("cid", "secret", "a", "r", 100 + 86399)
+    assert requests[0]["auth"] == "Basic " + base64.b64encode(b"cid:secret").decode()
+    assert requests[0]["body"] == {"grant_type": "authorization_code", "code": "ABC123", "client_id": "cid",
                                    "redirect_uri": "https://httpbin.org/get"}
 
 
-def test_endpoint_alternativo_quando_o_primeiro_nao_existe():
-    pedidos = []
-    t = servidor_token([(404, {}), (200, {"access_token": "a", "refresh_token": "r"})], pedidos)
-    trocar_codigo("cid", "segredo", "ABC", transport=t)
-    assert [p["url"] for p in pedidos] == ["https://api.smartthings.com/oauth/token",
-                                           "https://api.smartthings.com/v1/oauth/token"]
+def test_fallback_endpoint_when_the_first_does_not_exist():
+    requests = []
+    t = token_server([(404, {}), (200, {"access_token": "a", "refresh_token": "r"})], requests)
+    exchange_code("cid", "secret", "ABC", transport=t)
+    assert [r["url"] for r in requests] == ["https://api.smartthings.com/oauth/token",
+                                            "https://api.smartthings.com/v1/oauth/token"]
 
 
-def test_codigo_invalido():
-    t = servidor_token([(400, {"error": "invalid_grant"})], [])
-    with pytest.raises(ErroDispositivo, match="Código de autorização inválido"):
-        trocar_codigo("cid", "segredo", "velho", transport=t)
+def test_invalid_code():
+    t = token_server([(400, {"error": "invalid_grant"})], [])
+    with pytest.raises(DeviceError, match="Invalid or already used authorization code"):
+        exchange_code("cid", "secret", "old", transport=t)
 
 
-def test_token_valido_nao_renova():
-    relogio = Relogio()
-    auth = AuthOAuth(credenciais(relogio.agora + 3600), salvar=lambda c: None,
-                     transport=servidor_token([], []), relogio=relogio)
-    assert auth.token() == "acesso-1"
+def test_valid_token_does_not_refresh():
+    clock = Clock()
+    auth = AuthOAuth(credentials(clock.now + 3600), save=lambda c: None,
+                     transport=token_server([], []), clock=clock)
+    assert auth.token() == "access-1"
 
 
-def test_renova_antes_de_expirar_e_salva_o_refresh_novo():
-    relogio = Relogio()
-    salvas, pedidos = [], []
-    t = servidor_token([(200, {"access_token": "acesso-2", "refresh_token": "renova-2", "expires_in": 86399})],
-                       pedidos)
-    auth = AuthOAuth(credenciais(relogio.agora + 60), salvar=salvas.append, transport=t, relogio=relogio)
-    assert auth.token() == "acesso-2"  # faltava 1 min: renovou antes de usar
-    assert pedidos[0]["corpo"] == {"grant_type": "refresh_token", "refresh_token": "renova-1", "client_id": "cid"}
-    assert salvas[-1].refresh_token == "renova-2"  # o refresh antigo morreu; o novo foi guardado
-    assert salvas[-1].expira_em == relogio.agora + 86399
+def test_refreshes_before_expiry_and_saves_the_new_refresh_token():
+    clock = Clock()
+    saved, requests = [], []
+    t = token_server([(200, {"access_token": "access-2", "refresh_token": "refresh-2", "expires_in": 86399})],
+                     requests)
+    auth = AuthOAuth(credentials(clock.now + 60), save=saved.append, transport=t, clock=clock)
+    assert auth.token() == "access-2"  # 1 min left: refreshed before using it
+    assert requests[0]["body"] == {"grant_type": "refresh_token", "refresh_token": "refresh-1", "client_id": "cid"}
+    assert saved[-1].refresh_token == "refresh-2"  # the old refresh token is dead; the new one was stored
+    assert saved[-1].expires_at == clock.now + 86399
 
 
-def test_refresh_expirado_pede_nova_autorizacao():
-    relogio = Relogio()
-    t = servidor_token([(400, {"error": "invalid_grant"})], [])
-    auth = AuthOAuth(credenciais(relogio.agora - 1), salvar=lambda c: None, transport=t, relogio=relogio)
-    with pytest.raises(ErroAutorizacao, match="autorizar de novo"):
+def test_expired_refresh_asks_for_new_authorization():
+    clock = Clock()
+    t = token_server([(400, {"error": "invalid_grant"})], [])
+    auth = AuthOAuth(credentials(clock.now - 1), save=lambda c: None, transport=t, clock=clock)
+    with pytest.raises(AuthorizationError, match="authorize again"):
         auth.token()
 
 
-def test_401_renova_uma_vez_mesmo_com_varias_threads():
-    relogio = Relogio()
-    pedidos = []
-    t = servidor_token([(200, {"access_token": "acesso-2", "refresh_token": "renova-2"})], pedidos)
-    auth = AuthOAuth(credenciais(relogio.agora + 3600), salvar=lambda c: None, transport=t, relogio=relogio)
-    resultados = []
-    threads = [threading.Thread(target=lambda: resultados.append(auth.renovar("acesso-1"))) for _ in range(5)]
+def test_401_refreshes_once_even_with_several_threads():
+    clock = Clock()
+    requests = []
+    t = token_server([(200, {"access_token": "access-2", "refresh_token": "refresh-2"})], requests)
+    auth = AuthOAuth(credentials(clock.now + 3600), save=lambda c: None, transport=t, clock=clock)
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(auth.refresh("access-1"))) for _ in range(5)]
     for th in threads:
         th.start()
     for th in threads:
         th.join()
-    assert resultados == [True] * 5
-    assert len(pedidos) == 1  # as outras threads reaproveitaram o token já renovado
-    assert auth.token() == "acesso-2"
+    assert results == [True] * 5
+    assert len(requests) == 1  # the other threads reused the already refreshed token
+    assert auth.token() == "access-2"
 
 
-def test_cliente_renova_e_repete_a_requisicao_apos_401():
-    relogio = Relogio()
-    token_t = servidor_token([(200, {"access_token": "acesso-2", "refresh_token": "renova-2"})], [])
-    auth = AuthOAuth(credenciais(relogio.agora + 3600), salvar=lambda c: None, transport=token_t, relogio=relogio)
+def test_client_refreshes_and_retries_the_request_after_401():
+    clock = Clock()
+    token_t = token_server([(200, {"access_token": "access-2", "refresh_token": "refresh-2"})], [])
+    auth = AuthOAuth(credentials(clock.now + 3600), save=lambda c: None, transport=token_t, clock=clock)
 
     def api(req: httpx.Request):
-        if req.headers["Authorization"] == "Bearer acesso-1":
-            return httpx.Response(401)  # revogado antes da hora
+        if req.headers["Authorization"] == "Bearer access-1":
+            return httpx.Response(401)  # revoked early
         return httpx.Response(200, json={"components": {}})
 
-    cliente = SmartThingsClient(auth, transport=httpx.MockTransport(api))
-    assert cliente.status("dev1") == {"components": {}}
+    client = SmartThingsClient(auth, transport=httpx.MockTransport(api))
+    assert client.status("dev1") == {"components": {}}
 
 
-def test_falha_ao_salvar_nao_perde_o_token_em_memoria():
-    relogio = Relogio()
-    t = servidor_token([(200, {"access_token": "acesso-2", "refresh_token": "renova-2"})], [])
+def test_save_failure_keeps_the_token_in_memory():
+    clock = Clock()
+    t = token_server([(200, {"access_token": "access-2", "refresh_token": "refresh-2"})], [])
 
-    def salvar_quebrado(_):
-        raise OSError("keyring indisponível")
+    def broken_save(_):
+        raise OSError("keyring unavailable")
 
-    auth = AuthOAuth(credenciais(relogio.agora - 1), salvar=salvar_quebrado, transport=t, relogio=relogio)
-    assert auth.token() == "acesso-2"
+    auth = AuthOAuth(credentials(clock.now - 1), save=broken_save, transport=t, clock=clock)
+    assert auth.token() == "access-2"

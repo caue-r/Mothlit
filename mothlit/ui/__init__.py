@@ -1,1 +1,1 @@
-"""Interface: janela pywebview (HTML/CSS/JS em `web/`) que só conversa com os adaptadores via `Api`."""
+"""Interface: pywebview window (HTML/CSS/JS in `web/`) that only talks to the adapters through `Api`."""

@@ -2,11 +2,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from mothlit.devices import ArCondicionado, ErroDispositivo
+from mothlit.devices import AirConditioner, DeviceError
 
-# Resumo do GET /devices/{id} e /status reais do Samsung (componente main)
-DISPOSITIVO = {
-    "label": "Ar condicionado Quarto",
+# Summary of the real Samsung GET /devices/{id} and /status (main component)
+DEVICE = {
+    "label": "Bedroom AC",
     "components": [
         {
             "id": "main",
@@ -63,81 +63,81 @@ STATUS = {
 }
 
 
-def ar_falso(status=STATUS):
-    cliente = MagicMock()
-    cliente.dispositivo.return_value = DISPOSITIVO
-    cliente.status.return_value = status
-    return ArCondicionado(cliente, "dev1"), cliente
+def fake_ac(status=STATUS):
+    client = MagicMock()
+    client.device.return_value = DEVICE
+    client.status.return_value = status
+    return AirConditioner(client, "dev1"), client
 
 
-def test_estado_le_atributos_reais():
-    ar, _ = ar_falso()
-    e = ar.estado()
-    assert e.ligado is True
-    assert e.temperatura_ambiente == 25
-    assert e.temperatura_alvo == 26
-    assert e.faixa_alvo == (18, 30, 1)
-    assert e.modo == "auto"
-    assert e.modos == ["auto", "cool", "dry", "wind"]
-    assert e.ventiladores == ["auto"]  # available tem prioridade sobre supported
-    assert "dustSensor" not in e.capabilities  # desativada pelo aparelho
+def test_state_reads_real_attributes():
+    ac, _ = fake_ac()
+    s = ac.state()
+    assert s.on is True
+    assert s.room_temp == 25
+    assert s.target_temp == 26
+    assert s.target_range == (18, 30, 1)
+    assert s.mode == "auto"
+    assert s.modes == ["auto", "cool", "dry", "wind"]
+    assert s.fans == ["auto"]  # available takes priority over supported
+    assert "dustSensor" not in s.capabilities  # disabled by the device
 
 
-def test_estado_extras_samsung():
-    ar, _ = ar_falso()
-    e = ar.estado()
-    assert e.rotulo == "Ar condicionado Quarto"
-    assert e.oscilacao == "fixed"
-    assert e.oscilacoes == ["fixed", "vertical", "horizontal", "all"]
-    assert e.modo_opcional == "off"
-    assert "sleep" in e.modos_opcionais
+def test_state_samsung_extras():
+    ac, _ = fake_ac()
+    s = ac.state()
+    assert s.label == "Bedroom AC"
+    assert s.oscillation == "fixed"
+    assert s.oscillations == ["fixed", "vertical", "horizontal", "all"]
+    assert s.optional_mode == "off"
+    assert "sleep" in s.optional_modes
 
 
-def test_comandos_extras_usam_nomes_da_api():
-    ar, cliente = ar_falso()
-    ar.definir_oscilacao("vertical")
-    ar.definir_modo_opcional("sleep")
-    cliente.executar.assert_any_call("dev1", "fanOscillationMode", "setFanOscillationMode", ["vertical"], "main")
-    cliente.executar.assert_any_call(
+def test_extra_commands_use_api_names():
+    ac, client = fake_ac()
+    ac.set_oscillation("vertical")
+    ac.set_optional_mode("sleep")
+    client.execute.assert_any_call("dev1", "fanOscillationMode", "setFanOscillationMode", ["vertical"], "main")
+    client.execute.assert_any_call(
         "dev1", "custom.airConditionerOptionalMode", "setAcOptionalMode", ["sleep"], "main"
     )
 
 
-def test_usa_supported_quando_nao_ha_available():
+def test_uses_supported_when_there_is_no_available():
     status = {"components": {"main": {**STATUS["components"]["main"]}}}
     status["components"]["main"]["airConditionerFanMode"] = {
         "fanMode": {"value": "low"},
         "supportedAcFanModes": {"value": ["auto", "low"]},
     }
-    ar, _ = ar_falso(status)
-    assert ar.estado().ventiladores == ["auto", "low"]
+    ac, _ = fake_ac(status)
+    assert ac.state().fans == ["auto", "low"]
 
 
-def test_comandos_usam_nomes_da_api():
-    ar, cliente = ar_falso()
-    ar.ligar()
-    ar.desligar()
-    ar.definir_modo("cool")
-    ar.definir_ventilador("high")
-    cliente.executar.assert_any_call("dev1", "switch", "on", None, "main")
-    cliente.executar.assert_any_call("dev1", "switch", "off", None, "main")
-    cliente.executar.assert_any_call("dev1", "airConditionerMode", "setAirConditionerMode", ["cool"], "main")
-    cliente.executar.assert_any_call("dev1", "airConditionerFanMode", "setFanMode", ["high"], "main")
+def test_commands_use_api_names():
+    ac, client = fake_ac()
+    ac.turn_on()
+    ac.turn_off()
+    ac.set_mode("cool")
+    ac.set_fan("high")
+    client.execute.assert_any_call("dev1", "switch", "on", None, "main")
+    client.execute.assert_any_call("dev1", "switch", "off", None, "main")
+    client.execute.assert_any_call("dev1", "airConditionerMode", "setAirConditionerMode", ["cool"], "main")
+    client.execute.assert_any_call("dev1", "airConditionerFanMode", "setFanMode", ["high"], "main")
 
 
-def test_temperatura_respeita_faixa_lida():
-    ar, cliente = ar_falso()
-    ar.estado()  # carrega a faixa 18-30
-    assert ar.definir_temperatura(10) == 18
-    cliente.executar.assert_called_with(
+def test_temperature_respects_the_range_read():
+    ac, client = fake_ac()
+    ac.state()  # loads the 18-30 range
+    assert ac.set_temperature(10) == 18
+    client.execute.assert_called_with(
         "dev1", "thermostatCoolingSetpoint", "setCoolingSetpoint", [18], "main"
     )
-    assert ar.definir_temperatura(99) == 30
+    assert ac.set_temperature(99) == 30
 
 
-def test_capability_ausente_nao_envia_comando():
-    ar, cliente = ar_falso()
-    cliente.dispositivo.return_value = {"components": [{"id": "main", "capabilities": [{"id": "switch"}]}]}
-    with pytest.raises(ErroDispositivo, match="não suporta"):
-        ar.definir_modo("cool")
-    cliente.executar.assert_not_called()
+def test_missing_capability_sends_no_command():
+    ac, client = fake_ac()
+    client.device.return_value = {"components": [{"id": "main", "capabilities": [{"id": "switch"}]}]}
+    with pytest.raises(DeviceError, match="does not support"):
+        ac.set_mode("cool")
+    client.execute.assert_not_called()

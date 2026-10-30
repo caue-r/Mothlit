@@ -1,20 +1,20 @@
-"""Contrato comum entre a UI e os adaptadores de dispositivo."""
+"""Common contract between the UI and the device adapters."""
 
 from typing import Any, Protocol
 
 
-class ErroDispositivo(Exception):
-    """Falha ao falar com um aparelho.
+class DeviceError(Exception):
+    """Failed to talk to a device.
 
-    A mensagem já é amigável e pode ir direto para a barra de status.
+    The message is already user-friendly and can go straight to the status bar.
     """
 
 
 class Device(Protocol):
-    nome: str
+    name: str
 
-    def ligar(self) -> None: ...
+    def turn_on(self) -> None: ...
 
-    def desligar(self) -> None: ...
+    def turn_off(self) -> None: ...
 
-    def estado(self) -> Any: ...
+    def state(self) -> Any: ...

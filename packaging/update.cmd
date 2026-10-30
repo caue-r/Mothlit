@@ -1,21 +1,21 @@
 @echo off
-rem Atualiza o Mothlit instalado com o c?digo atual: gera o execut?vel e reinstala.
-rem Se o Mothlit estiver aberto, ele ? fechado e reaberto na bandeja com a vers?o nova.
+rem Updates the installed Mothlit with the current code: builds the executable and reinstalls.
+rem If Mothlit is open, it is closed and reopened in the tray with the new version.
 cd /d "%~dp0.."
-echo Gerando o executavel...
-uv run pyinstaller empacotamento/mothlit.spec --noconfirm --log-level WARN
+echo Building the executable...
+uv run pyinstaller packaging/mothlit.spec --noconfirm --log-level WARN
 if errorlevel 1 (
     echo.
-    echo Falha ao gerar o executavel.
+    echo Failed to build the executable.
     pause
     exit /b 1
 )
-echo Conferindo o executavel gerado...
-"dist\Mothlit\mothlit-cli.exe" verificar
+echo Checking the built executable...
+"dist\Mothlit\mothlit-cli.exe" verify
 if errorlevel 1 (
     echo.
-    echo O executavel novo falhou na verificacao. A versao instalada NAO foi alterada.
+    echo The new executable failed the check. The installed version was NOT changed.
     pause
     exit /b 1
 )
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0instalar.ps1" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
